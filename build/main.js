@@ -16,6 +16,10 @@ module.exports = {
 		var maxPlayers   = tournamentData.maxPlayers;
 		var description  = tournamentData.description;
 
+	},
+	// Sends same msg to bunch of clients
+	informUniformly: function(userIDs, msg) {
+		true;
 	}
 
 }
@@ -187,13 +191,17 @@ module.exports = function(timeLimit, algorithm) {
 	return new Scorer(algorithm);
 }
 },{}],6:[function(require,module,exports){
-function SingleRound() {
+function SingleRound(question, timeToAnswer, expireCallback) {
+
+	this.question = question;
+	this.timeToAnswer = timeToAnswer;
+	this.expireCallback = expireCallback;
 
 
 }
 
-module.exports = function() {
-	return SingleRound();
+module.exports = function(question, timeToAnswer, expireCallback) {
+	return SingleRound(question, timeToAnswer, expireCallback);
 }
 },{}],7:[function(require,module,exports){
 function Standings(userIDs, rankings, userIDToRanking, setByMerger) {
@@ -390,6 +398,8 @@ var Scorer        = require('./Scorer');
 var SingleRound   = require('./SingleRound');
 var mergeFun      = require('./StandingsMerger');
 
+var controller    = require('../controller');
+
 var tournamentSchema = Joi.object().keys({
 	maxPlayers: Joi.number().integer().min(2).max(1000).required(),
 	name: Joi.string().min(1).max(64).required(),
@@ -407,12 +417,33 @@ function WaitingForStartState(tournament) {
 
 }
 
+// States
+WaitingForStartState.prototype.getClientMsg = function() {
+	// In production version map all these to integers!
+	return {tag: 'stateChange', 'state': this.name};
+}
+
 function PreparingNextQuestion(tournament) {
 	this.tournament = tournament;
 	this.name = 'preparingNextQuestion';
 }
 
+PreparingNextQuestion.prototype.getClientMsg = function() {
+	// In production version map all these to integers!
+	return {tag: 'stateChange', 'state': this.name};
+}
 
+function WaitingForAnswers(tournament) {
+	this.tournament = tournament;
+	this.name = 'waitingForAnswers';
+
+}
+
+WaitingForAnswers.prototype.getClientMsg = function() {
+	return {tag: 'stateChange', state: this.name};
+}
+
+// Tournament object
 function Tournament(data) {
 	this.tournamentData = data;
 
@@ -420,6 +451,7 @@ function Tournament(data) {
 	this.questionsWereDiscarded = false;
 	
 	this.currentState;
+	this.round;
 
 	this.tournamentInvalid = false;
 
@@ -461,16 +493,40 @@ Tournament.prototype.buildQuestionVault = function(questions) {
 	
 
 }
+Tournament.prototype.tournamentOver = function() {
+	// Tournament over
+}
 
 Tournament.prototype.start = function() {
 	this.currentState = new PreparingNextQuestion(this);
+	var q = this.questionVault.getNextQuestion();
+	if (!q) {
+		// Tournament over
+		return this.tournamentOver();
+	}
+	this.round = SingleRound(q, this.tournamentData.timeToAnswer, this.roundEnded.bind(this));
+	this.scheduleNextRound(this.round);
 	this.tournamentStateChange();
 
 }
 
+Tournament.prototype.roundEnded = function() {
+	// Handle round ending
+	// Call new standings infering stuff
+}
+
+Tournament.prototype.scheduleNextRound = function(round) {
+	// Settimeout something to launch round
+}
+
 Tournament.prototype.tournamentStateChange = function() {
 	// Informs players of state change
-	massisController.informUniformly(this.userList, this.currentState.getClientMsg());
+	controller.informUniformly(this.userList, this.currentState.getClientMsg());
+}
+
+Tournament.prototype.getStateName = function() {
+	if (this.currentState) return this.currentState.name;
+	return 'nostate';
 }
 
 Tournament.prototype.registerUser = function(uid) {
@@ -487,7 +543,7 @@ Tournament.prototype.getQuestionsNumber = function() {
 module.exports = function(data) {
 	return new Tournament(data);
 }
-},{"./QuestionVault":3,"./Scorer":5,"./SingleRound":6,"./Standings":7,"./StandingsMerger":8,"joi":118,"lodash":127}],10:[function(require,module,exports){
+},{"../controller":1,"./QuestionVault":3,"./Scorer":5,"./SingleRound":6,"./Standings":7,"./StandingsMerger":8,"joi":118,"lodash":127}],10:[function(require,module,exports){
 
 // For now this is mostly for testing
 // REQUIRING THIS ALLOW AUTORELOAD OF TESTS
@@ -47534,6 +47590,9 @@ describe('Dynamic components tests', function() {
     	console.log(t);
     	assert.equal(false, t.tournamentInvalid);
     	assert.equal(4, t.getQuestionsNumber());
+    	assert.equal('waitingForStart', t.getStateName());
+    	t.start();
+    	assert.equal('preparingNextQuestion', t.getStateName());
     });
   });
 

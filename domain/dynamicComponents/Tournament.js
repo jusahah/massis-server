@@ -9,6 +9,8 @@ var Scorer        = require('./Scorer');
 var SingleRound   = require('./SingleRound');
 var mergeFun      = require('./StandingsMerger');
 
+var controller    = require('../controller');
+
 var tournamentSchema = Joi.object().keys({
 	maxPlayers: Joi.number().integer().min(2).max(1000).required(),
 	name: Joi.string().min(1).max(64).required(),
@@ -26,12 +28,33 @@ function WaitingForStartState(tournament) {
 
 }
 
+// States
+WaitingForStartState.prototype.getClientMsg = function() {
+	// In production version map all these to integers!
+	return {tag: 'stateChange', 'state': this.name};
+}
+
 function PreparingNextQuestion(tournament) {
 	this.tournament = tournament;
 	this.name = 'preparingNextQuestion';
 }
 
+PreparingNextQuestion.prototype.getClientMsg = function() {
+	// In production version map all these to integers!
+	return {tag: 'stateChange', 'state': this.name};
+}
 
+function WaitingForAnswers(tournament) {
+	this.tournament = tournament;
+	this.name = 'waitingForAnswers';
+
+}
+
+WaitingForAnswers.prototype.getClientMsg = function() {
+	return {tag: 'stateChange', state: this.name};
+}
+
+// Tournament object
 function Tournament(data) {
 	this.tournamentData = data;
 
@@ -39,6 +62,7 @@ function Tournament(data) {
 	this.questionsWereDiscarded = false;
 	
 	this.currentState;
+	this.round;
 
 	this.tournamentInvalid = false;
 
@@ -80,16 +104,40 @@ Tournament.prototype.buildQuestionVault = function(questions) {
 	
 
 }
+Tournament.prototype.tournamentOver = function() {
+	// Tournament over
+}
 
 Tournament.prototype.start = function() {
 	this.currentState = new PreparingNextQuestion(this);
+	var q = this.questionVault.getNextQuestion();
+	if (!q) {
+		// Tournament over
+		return this.tournamentOver();
+	}
+	this.round = SingleRound(q, this.tournamentData.timeToAnswer, this.roundEnded.bind(this));
+	this.scheduleNextRound(this.round);
 	this.tournamentStateChange();
 
 }
 
+Tournament.prototype.roundEnded = function() {
+	// Handle round ending
+	// Call new standings infering stuff
+}
+
+Tournament.prototype.scheduleNextRound = function(round) {
+	// Settimeout something to launch round
+}
+
 Tournament.prototype.tournamentStateChange = function() {
 	// Informs players of state change
-	massisController.informUniformly(this.userList, this.currentState.getClientMsg());
+	controller.informUniformly(this.userList, this.currentState.getClientMsg());
+}
+
+Tournament.prototype.getStateName = function() {
+	if (this.currentState) return this.currentState.name;
+	return 'nostate';
 }
 
 Tournament.prototype.registerUser = function(uid) {

@@ -15,6 +15,10 @@ module.exports = {
 		var maxPlayers   = tournamentData.maxPlayers;
 		var description  = tournamentData.description;
 
+	},
+	// Sends same msg to bunch of clients
+	informUniformly: function(userIDs, msg) {
+		true;
 	}
 
 }

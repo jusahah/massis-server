@@ -71,6 +71,9 @@ describe('Dynamic components tests', function() {
     	console.log(t);
     	assert.equal(false, t.tournamentInvalid);
     	assert.equal(4, t.getQuestionsNumber());
+    	assert.equal('waitingForStart', t.getStateName());
+    	t.start();
+    	assert.equal('preparingNextQuestion', t.getStateName());
     });
   });
 
