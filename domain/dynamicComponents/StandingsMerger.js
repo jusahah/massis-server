@@ -1,21 +1,24 @@
 // Merges Standings with RoundResults
 var Standings = require('./Standings');
-var _ = require('lodash');
 
-function buildWhenFiveOrUnderUsers(uids, standings, roundResults) {
+function buildWhenTenOrUnderUsers(uids, standings, roundResults) {
 	var newPoints = [];
 
 	for (var i = uids.length - 1; i >= 0; i--) {
 		var uid = uids[i];
-		var cp = parseInt(standings.userIDToRanking(uid).split("_")[1]); // Latter part is the points
+		console.log("UID: " + uid)
+		var cp = parseInt(standings.getUserIDToRankingPoints(uid).split("_")[1]); // Latter part is the points
 		var up = roundResults.getUserPoints(uid);
 		if (!up) up = 0; // No change in player points
 		newPoints.push({uid: uid, points: cp+up});
 	};
 
+	console.log("NEW POINTS IN BUILDER");
+	console.log(newPoints);
+
 	newPoints.sort(function(a, b) {
-		if (a.points < b.points) return -1;
-		if (a.points > b.points) return 1;
+		if (a.points > b.points) return -1;
+		if (a.points < b.points) return 1;
 		return 0; 
 	});	
 	var topX = {};
@@ -30,7 +33,7 @@ function buildWhenFiveOrUnderUsers(uids, standings, roundResults) {
 	}
 
 	return {
-		'standings': new Standings(uids, newPoints, userIDToRanking),
+		'standings': Standings(uids, newPoints, userIDToRanking, true),
 		'standingsViews': standingsViews
 	} 
 }
@@ -42,13 +45,13 @@ function StandingsMerger(standings, roundResults) {
 
 	if (uids.length <= 10) {
 		// We use different function to build this all
-		return buildWhenFiveOrUnderUsers(uids, standings, roundResults);
+		return buildWhenTenOrUnderUsers(uids, standings, roundResults);
 	}
 
 	// This is somewhat performance critical so we use optimized for-loop
 	for (var i = uids.length - 1; i >= 0; i--) {
 		var uid = uids[i];
-		var cp = parseInt(standings.userIDToRanking(uid).split("_")[1]); // Latter part is the points
+		var cp = parseInt(standings.getUserIDToRankingPoints(uid).split("_")[1]); // Latter part is the points
 		var up = roundResults.getUserPoints(uid);
 		if (!up) up = 0; // No change in player points
 		newPoints.push({uid: uid, points: cp+up});
@@ -58,8 +61,8 @@ function StandingsMerger(standings, roundResults) {
 	// Now we need to calc rankings
 	// First sort
 	newPoints.sort(function(a, b) {
-		if (a.points < b.points) return -1;
-		if (a.points > b.points) return 1;
+		if (a.points > b.points) return -1;
+		if (a.points < b.points) return 1;
 		return 0; 
 	});
 
@@ -75,6 +78,7 @@ function StandingsMerger(standings, roundResults) {
 		5: newRankings[4]
 	}
 
+
 	// Following is pretty naive algorithm -> improve if performance problems arise
 	for (var i = 0, j = newPoints.length; i < j; i++) {
 		var o = newPoints[i];
@@ -84,19 +88,19 @@ function StandingsMerger(standings, roundResults) {
 		standingsViews[uid2].top5 = topFive;
 		standingsViews[uid2].neighbours = {};
 
-		if (i-1 >= 0) {
-			standingsViews[uid2].neighbours[-1] = newPoints[i-1];
-		} 
 		if (i-2 >= 0) {
-			standingsViews[uid2].neighbours[-2] = newPoints[i-2];
+			standingsViews[uid2].neighbours[0] = newPoints[i-2];
+		} 
+		if (i-1 >= 0) {
+			standingsViews[uid2].neighbours[1] = newPoints[i-1];
 		}
-		standingsViews[uid2].neighbours[0] = o; // Oneself is at the middle
+		standingsViews[uid2].neighbours[2] = o; // Oneself is at the middle
 
 		if (i+1 < j) {
-			standingsViews[uid2].neighbours[1] = newPoints[i+1];
+			standingsViews[uid2].neighbours[3] = newPoints[i+1];
 		} 
 		if (i+2 < j) {
-			standingsViews[uid2].neighbours[2] = newPoints[i+2];
+			standingsViews[uid2].neighbours[4] = newPoints[i+2];
 		}
 
 		// Now build standingsview
@@ -108,7 +112,7 @@ function StandingsMerger(standings, roundResults) {
 	// UserIdToRanking: {uid: ranking_points, uid: ranking_points, ..., uid: ranking_points} 
 
 	return {
-		'standings': new Standings(uids, newRankings, userIDToRanking),
+		'standings': Standings(uids, newRankings, userIDToRanking, true),
 		'standingsViews': standingsViews
 	}
 

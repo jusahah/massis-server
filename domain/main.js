@@ -8,7 +8,9 @@ var Scorer = require('./dynamicComponents/Scorer');
 var QuestionVault = require('./dynamicComponents/QuestionVault');
 var RoundResults  = require('./dynamicComponents/RoundResults');
 var Standings     = require('./dynamicComponents/Standings');
+var merger       = require('../domain/dynamicComponents/StandingsMerger');
 
+console.log(merger);
 console.log(Standings);
 console.log(RoundResults);
 console.log(QuestionVault);
