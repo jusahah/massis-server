@@ -1,0 +1,23 @@
+{
+  "name": "massis_server",
+  "version": "1.0.0",
+  "description": "Massis server-side (node.js)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watch": "watchify domain/test.js -o build/test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/jusahah/massis-server.git"
+  },
+  "keywords": [
+    "quiz"
+  ],
+  "author": "Jussi Hamalainen",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jusahah/massis-server/issues"
+  },
+  "homepage": "https://github.com/jusahah/massis-server#readme"
+}
