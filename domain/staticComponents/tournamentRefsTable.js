@@ -14,6 +14,7 @@ module.exports = {
 		// generate ID for tournament
 		var id = currIDCounter++;
 		tournamentTable[id] = t;
+		this.tournamentTableChange();
 		return id;
 	},
 	getTournament: function(id) {

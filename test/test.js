@@ -15,6 +15,10 @@ describe('Dynamic components tests', function() {
   describe('Tournament table', function () {	
     it('create tournament', function () {	
     	var tournamentData = {
+    		timeBetweenQuestions: 10,
+    		timeToAnswer: 10,
+    		name: 'Test tourney',
+    		description: 'The best tournament in the history of human kind',
     		startsAt: Date.now() + 1000 * 180,
     		maxPlayers: 200,
     		questions: [
@@ -65,7 +69,7 @@ describe('Dynamic components tests', function() {
     	var t = Tournament(tournamentData);
     	console.log("TOURNAMENT OBj------------------")
     	console.log(t);
-
+    	assert.equal(false, t.tournamentInvalid);
     	assert.equal(4, t.getQuestionsNumber());
     });
   });
