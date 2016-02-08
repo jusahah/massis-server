@@ -25,9 +25,12 @@ Question.prototype.getQuestion = function() {
 */
 Question.prototype.isQuestionInvalid = function() {
 	var isInvalid   = false;
+	console.log("VALIDATIONG SINGLE QUESTION DATA");
+	console.log(this.questionData);
 	Joi.validate(this.questionData, questionSchema, function(err, value) {
 		if (err) {
 			isInvalid = err.details[0].path;
+			console.log("ERROR IN JOI: " + isInvalid);
 		}
 	});
 

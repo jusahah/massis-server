@@ -8,8 +8,11 @@ function QuestionVault(questionsDataArr) {
 
 	this.init = function() {
 		_.each(this.questionsDataArr, function(questionData) {
-			this.questions.push(Question(questionData)); // Add to Question array
+
+			var q = Question(questionData);
+			if (!q.isQuestionInvalid()) this.questions.push(q); // Add to Question array
 		}.bind(this));
+		this.questionsAmount = this.questions.length; // Saves original question amount
 		return true;
 	}
 
@@ -30,6 +33,10 @@ QuestionVault.prototype.getNextQuestion = function() {
 
 QuestionVault.prototype.getQuestionsLeft = function() {
 	return this.questions.length;
+}
+
+QuestionVault.prototype.totalQuestionsNumber = function() {
+	return this.questionsAmount;
 }
 
 module.exports = function(questionsArr) {

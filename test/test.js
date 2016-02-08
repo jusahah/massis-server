@@ -8,8 +8,67 @@ var Scorer     = require('../domain/dynamicComponents/Scorer');
 var RoundResults = require('../domain/dynamicComponents/RoundResults');
 var Standings    = require('../domain/dynamicComponents/Standings');
 var mergerFun    = require('../domain/dynamicComponents/StandingsMerger');
+var Tournament   = require('../domain/dynamicComponents/Tournament');
 
 describe('Dynamic components tests', function() {
+
+  describe('Tournament table', function () {	
+    it('create tournament', function () {	
+    	var tournamentData = {
+    		startsAt: Date.now() + 1000 * 180,
+    		maxPlayers: 200,
+    		questions: [
+	    		{
+			  		question: "Capital of Finland?", // Question missing
+			  		choices: {
+			  			a: "Helsinki",
+			  			b: "Tukholma",
+			  			c: "Porvoo",
+			  			d: "Sydney"
+			  		},
+			  		answer: 'a'
+			  	},
+	    		{
+			  		question: "Capital of Sweden?", // Question missing
+			  		choices: {
+			  			a: "Helsinki",
+			  			b: "Tukholma",
+			  			c: "Porvoo",
+			  			d: "Sydney"
+			  		},
+			  		answer: 'b'
+			  	},
+	    		{
+			  		question: "Capital of Nigeria?", // Question missing
+			  		choices: {
+			  			a: "Helsinki",
+			  			b: "Tukholma",
+			  			c: "Abuja",
+			  			d: "Sydney"
+			  		},
+			  		answer: 'c'
+			  	},
+	    		{
+			  		question: "Capital of Uganda?", // Question missing
+			  		choices: {
+			  			a: "Helsinki",
+			  			b: "Tukholma",
+			  			c: "Porvoo",
+			  			d: "Kampala"
+			  		},
+			  		answer: 'd'
+			  	}			  				  				  	
+
+    		]
+    	}
+
+    	var t = Tournament(tournamentData);
+    	console.log("TOURNAMENT OBj------------------")
+    	console.log(t);
+
+    	assert.equal(4, t.getQuestionsNumber());
+    });
+  });
 
   // QUESTION	
   describe('Question object', function () {
@@ -480,10 +539,7 @@ describe('Dynamic components tests', function() {
         
 
          
-        
-
-
-
+     
 
 
 	});
