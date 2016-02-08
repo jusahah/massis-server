@@ -4,7 +4,7 @@
   "description": "Massis server-side (node.js)",
   "main": "index.js",
   "watch": {
-    "test-mocha": "build/main.js" 
+    "test-mocha": "build/main.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -28,5 +28,8 @@
   "devDependencies": {
     "mochify": "^2.16.0",
     "npm-watch": "^0.1.1"
+  },
+  "dependencies": {
+    "joi": "^7.2.3"
   }
 }
