@@ -3,9 +3,14 @@
   "version": "1.0.0",
   "description": "Massis server-side (node.js)",
   "main": "index.js",
+  "watch": {
+    "test-mocha": "build/main.js" 
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "watch": "watchify domain/test.js -o build/test.js"
+    "watch-main": "watchify domain/main.js -o build/main.js",
+    "watch-test": "npm-watch",
+    "test-mocha": "mocha"
   },
   "repository": {
     "type": "git",
@@ -19,5 +24,9 @@
   "bugs": {
     "url": "https://github.com/jusahah/massis-server/issues"
   },
-  "homepage": "https://github.com/jusahah/massis-server#readme"
+  "homepage": "https://github.com/jusahah/massis-server#readme",
+  "devDependencies": {
+    "mochify": "^2.16.0",
+    "npm-watch": "^0.1.1"
+  }
 }
