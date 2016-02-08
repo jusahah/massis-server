@@ -3,7 +3,11 @@ var assert = require('assert');
 // Deps from app
 var controller = require('../domain/controller');
 var Question   = require('../domain/dynamicComponents/Question');
+var QuestionVault = require('../domain/dynamicComponents/QuestionVault');
 var Scorer     = require('../domain/dynamicComponents/Scorer');
+var RoundResults = require('../domain/dynamicComponents/RoundResults');
+var Standings    = require('../domain/dynamicComponents/Standings');
+
 
 describe('Dynamic components tests', function() {
 
@@ -162,7 +166,7 @@ describe('Dynamic components tests', function() {
     	]);
 
     	assert.equal(3, vault.getQuestionsLeft());
-    	assert.equal('Question 1', vault.peekNextQuestion().question);  
+    	assert.equal('Question 1', vault.peekNextQuestion().getQuestion());  
 
 	});
     it('get Questions one by one', function () {
@@ -199,15 +203,45 @@ describe('Dynamic components tests', function() {
 	  		},	  			  		
     	]);	
 
-    	assert.equal('a', vault.getNextQuestion().answer);  
-    	assert.equal('Question 2', vault.getNextQuestion().question);
+
+    	assert.equal('a', vault.getNextQuestion().getAnswerChoice());  
+
+    	assert.equal('Question 2', vault.getNextQuestion().getQuestion());
     	assert.equal(1, vault.getQuestionsLeft());
-      	assert.equal('Question 3', vault.getNextQuestion().question);
+      	assert.equal('Question 3', vault.getNextQuestion().getQuestion());
     	assert.equal(null, vault.getNextQuestion());  
 
 	});
 
   });
 
+  // RoundResults
+  describe('RoundResults object', function () {	
+    it('save points and fetch them later', function () {
+	  var rr1 = RoundResults();
+	  rr1.addPoints(5, 7);
+	  rr1.addPoints(6, 0);
+	  assert.equal(7, rr1.getUserPoints(5));
+	  assert.equal(0, rr1.getUserPoints(6));
+	  assert.equal(undefined, rr1.getUserPoints(99));
+
+	});
+
+  });
+
+
+  // Standings
+  describe('Standings object', function () {	
+    it('create standings object', function () {
+	  var s1 = Standings();
+	  rr1.addPoints(5, 7);
+	  rr1.addPoints(6, 0);
+	  assert.equal(7, rr1.getUserPoints(5));
+	  assert.equal(0, rr1.getUserPoints(6));
+	  assert.equal(undefined, rr1.getUserPoints(99));
+
+	});
+
+  });
 });
 

@@ -1,1 +1,1 @@
-console.error("Error: Cannot find module './dynamicComponents/QuestionVault' from '/home/jussi/Desktop/massis_server/domain'");
+console.error("Error: Cannot find module './dynamicComponents/Standings' from '/home/jussi/Desktop/massis_server/domain'");

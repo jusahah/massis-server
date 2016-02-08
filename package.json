@@ -30,6 +30,7 @@
     "npm-watch": "^0.1.1"
   },
   "dependencies": {
-    "joi": "^7.2.3"
+    "joi": "^7.2.3",
+    "lodash": "^4.3.0"
   }
 }

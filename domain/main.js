@@ -6,7 +6,11 @@ var controller = require('./controller');
 var Question = require('./dynamicComponents/Question');
 var Scorer = require('./dynamicComponents/Scorer');
 var QuestionVault = require('./dynamicComponents/QuestionVault');
+var RoundResults  = require('./dynamicComponents/RoundResults');
+var Standings     = require('./dynamicComponents/Standings');
 
+console.log(Standings);
+console.log(RoundResults);
 console.log(QuestionVault);
 console.log(Question);
 console.log(Scorer);

@@ -43,6 +43,10 @@ Question.prototype.getAnswer = function() {
 	return this.questionData.choices[this.questionData.answer];
 }
 
+Question.prototype.getAnswerChoice = function() {
+	return this.questionData.answer;
+}
+
 Question.prototype.evalAnswer = function(answerGiven) {
 	return this.questionData.answer === answerGiven;
 }
