@@ -1,6 +1,7 @@
 // Tool deps
 var _   = require('lodash');
-var Joi = require('joi'); 
+// var Joi = require('joi'); TURN ON FOR SERVER-USE
+var Joi    = require('./fakes/FakeJoi'); 
 
 // App deps
 var QuestionVault = require('./QuestionVault');
@@ -104,6 +105,10 @@ function Tournament(data) {
 	this.init();
 
 
+}
+
+Tournament.prototype.dataValid = function() {
+	return this.tournamentInvalid === false;
 }
 
 Tournament.prototype.buildQuestionVault = function(questions) {

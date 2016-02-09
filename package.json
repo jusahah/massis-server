@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "watch-main": "watchify domain/main.js -o build/main.js",
+    "watch-main": "watchify domain/main.js -t babelify -o build/main.js",
     "watch-test": "npm-watch",
     "test-mocha": "mocha"
   },
@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/jusahah/massis-server#readme",
   "devDependencies": {
+    "babelify": "^7.2.0",
     "mochify": "^2.16.0",
     "npm-watch": "^0.1.1"
   },

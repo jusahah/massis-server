@@ -15,11 +15,15 @@ module.exports = {
 	// API PART
 	addTournament: function(tournamentData) {
 		// Consider validation data object with Joi
-		var name = tournamentData.name;
-		var startingTime = tournamentData.startingTime;
-		var questions    = tournamentData.questions;
-		var maxPlayers   = tournamentData.maxPlayers;
-		var description  = tournamentData.description;
+		var tid = idsToTournaments.insertTournament(tournamentData); // Returns tournament id (that was allocated)
+		if (!tid) {
+			// Data validation error
+			console.error("Tournament data did not pass validation");
+			console.log(tournamentData);
+			return false;
+		}
+
+		return tid;
 
 	},
 	// User joining into domain-layer needs him to provide tournamentID 
