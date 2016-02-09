@@ -2,11 +2,63 @@
 <html>
 <head>
 	<title>Massis - domain layer usage test</title>
+
+	<style>
+	.userel {
+		height: 420px;
+		width: 400px;
+		margin: 8px;
+		display: inline-block;
+		font-size: 11px;
+		color: white;
+		background-color: #8644ee;
+		overflow-x: hidden;
+		overflow-y: auto;
+		padding: 4px;
+	}
+	.tournamentel {
+		height: 420px;
+		width: 400px;
+		margin: 8px;
+		display: inline-block;
+		font-size: 11px;
+		color: white;
+		background-color: red;
+		overflow-x: hidden;
+		overflow-y: auto;
+		padding: 4px;
+	}
+	.msgUL {
+		list-style: none;
+		margin-left: 0px;
+		padding: 2px;
+
+	}
+
+	.msgUL li {
+		border-width: 2px;
+		border-color: orange;
+		border-style: dotted;
+		margin-bottom: 4px;
+	}
+
+	ul > li:nth-of-type(odd) {
+	    background-color: #f9f9f9 ;
+	    color: black;
+
+	}
+	ul > li:nth-of-type(even) {
+	    background-color: #fff ;
+	    color: black;
+	}	
+	</style>
 	
 </head>
 <body>
 <h3>Test domain layer by using it</h3>
-  
+  <div id="users"></div>
+  <hr>
+  <div id="tournamentArea"></div>
 
 
 <script src="main.js"></script>

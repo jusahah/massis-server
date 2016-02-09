@@ -2,6 +2,16 @@ var _ = require('lodash');
 var idsToUsers = require('./staticComponents/userIDsToUsers');
 var idsToTournaments = require('./staticComponents/tournamentRefsTable');
 
+// Straight from SO
+function isInt(value) {
+  var x;
+  if (isNaN(value)) {
+    return false;
+  }
+  x = parseFloat(value);
+  return (x | 0) === x;
+}
+
 /*
 	Provides high-level facace API for accessing domain layer and its services
 */
@@ -15,6 +25,14 @@ module.exports = {
 	// API PART
 	addTournament: function(tournamentData) {
 		// Consider validation data object with Joi
+		/* OBSOLETE - decided to go with basic timestamp validation
+		// Turn tournamentData.startsAt into Date object if its timestamp
+		if (isInt(tournamentData.startAt)) {
+			// Turn to Date
+			tournamentData.startsAt = new Date(tournamentData.startAt);
+		}
+		// If its not int we trust that its a Date object already
+		*/
 		var tid = idsToTournaments.insertTournament(tournamentData); // Returns tournament id (that was allocated)
 		if (!tid) {
 			// Data validation error
@@ -24,6 +42,15 @@ module.exports = {
 		}
 
 		return tid;
+
+	},
+	getTournamentStatusInfo: function(tid) {
+		var tournament = idsToTournaments.getTournament(tid);
+		if (!tournament) {
+			// Does not exist
+			return {success: false, reason: "Tournament does not exist - it may have ended already!"};
+		}
+		return tournament.getStatusInfo();
 
 	},
 	// User joining into domain-layer needs him to provide tournamentID 
@@ -50,7 +77,7 @@ module.exports = {
 		// Register user id into the tournament
 		tournament.registerUser(uid);
 		// Return uid to caller (which is socket wrapper most often)
-		return {success: true, uid: uid};
+		return {success: true, uid: uid, tid: tournamentID};
 
 	},
 	userLeft: function(uid) {
@@ -79,22 +106,7 @@ module.exports = {
 		return false;
 
 	},
-	// Sends same msg to bunch of clients
-	informUniformly: function(userIDs, msg) {
-		var users = idsToUsers.getListOfUsers(userIDs);
-		// Users who have already left were not included to the users array
-		_.each(users, function(user) {
-			user.send(msg);
-		});
-		
-	},
-	informUser: function(uid, msg) {
-		var user = idsToUsers.getUser(uid);
-		// Need to check if the user has already left
-		if (user) {
-			user.send(msg);
-		}
-	}
+
 
 
 }

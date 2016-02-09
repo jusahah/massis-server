@@ -1,5 +1,9 @@
 var RoundResults = require('./RoundResults');
 var Scorer       = require('./Scorer');
+var msgSink   = require('../msgSink');
+
+console.log("msgSink IN ROUND");
+console.log(msgSink);
 
 function randomInt() {
 	return Math.floor(Math.random() * 1000000);
@@ -25,7 +29,8 @@ SingleRound.prototype.start = function() {
 	this.scorer = Scorer(this.timeToAnswer, null); // null forces Scorer to use default algorithm
 	// Starts a round
 	this.openForAnswers = true;
-	controller.informUniformly(this.userList, {
+	console.log(msgSink);
+	msgSink.informUniformly(this.userList, {
 		tag: 'newQuestion', 
 		data: {
 			question: this.question.getQuestion(), 
@@ -61,5 +66,5 @@ SingleRound.prototype.getRoundResults = function() {
 }
 
 module.exports = function(userList, question, timeToAnswer, expireCallback) {
-	return SingleRound(userList, question, timeToAnswer, expireCallback);
+	return new SingleRound(userList, question, timeToAnswer, expireCallback);
 }
