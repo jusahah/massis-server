@@ -78,11 +78,19 @@ module.exports = {
 	// Sends same msg to bunch of clients
 	informUniformly: function(userIDs, msg) {
 		var users = idsToUsers.getListOfUsers(userIDs);
+		// Users who have already left were not included to the users array
 		_.each(users, function(user) {
 			user.send(msg);
 		});
 		
-	},,
+	},
+	informUser: function(uid, msg) {
+		var user = idsToUsers.getUser(uid);
+		// Need to check if the user has already left
+		if (user) {
+			user.send(msg);
+		}
+	}
 
 
 }

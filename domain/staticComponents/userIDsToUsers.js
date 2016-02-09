@@ -22,7 +22,7 @@ module.exports = {
 		var users = [];
 		for (var i = userIDs.length - 1; i >= 0; i--) {
 			var user = usersTable[userIDs[i]];
-			if (user) users.push(user);
+			if (user) users.push(user); // Only push those who are still online
 		};
 
 		return users;

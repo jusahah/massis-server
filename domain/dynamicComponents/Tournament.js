@@ -75,6 +75,9 @@ function Tournament(data) {
 	// Standings of players (Standings object)
 	this.currentStandings;
 
+	// Users who have left
+	this.leftDuringPlay = [];
+
 	this.tournamentInvalid = false;
 
 	this.userList = [];
@@ -112,11 +115,17 @@ Tournament.prototype.buildQuestionVault = function(questions) {
 		this.questionsWereDiscarded = true;
 		// Broadcast notification outwards too
 	}
+	return true;
 	
 
 }
-Tournament.prototype.tournamentOver = function() {
-	// Tournament over
+Tournament.prototype.playerLeft = function(uid) {
+	// It is bit peculiar but we actually dont need to do anything here
+	// Well, actually, we might want to store this info so clients can be sent
+	// a list of disconnected users
+	this.leftDuringPlay.push(uid);
+	return true;
+
 }
 
 Tournament.prototype.start = function() {
@@ -159,7 +168,28 @@ Tournament.prototype.roundEnded = function() {
 	}
 
 	// While we are waiting for next round (or have ended) lets compute new standings
-	this.currentStandings = this.computeNewStandings(endedRound);
+	var infoO = this.computeNewStandings(endedRound); // Returns standings + standing views
+	this.currentStandings = infoO.standings; // Set new standings
+	var views = infoO.standingViews;
+	// Next lets broadcast standing views to all players
+	// A standing view is data object telling how a particular user sees the standings list
+	// We cannot user controller.informUniformly() as data going to different players is different
+	// So we use controller.informUser()
+	_.each(this.userList, function(uid) {
+		var userView = views[uid];
+		controller.informUser(uid, {tag: 'newStandings', data: userView});
+	}.bind(this));
+
+
+
+}
+
+
+Tournament.prototype.computeNewStandings = function(endedRound) {
+	// First we have to get results object of ended round
+	var rr = endedRound.getRoundResults();
+	return mergeFun(this.currentStandings, rr); // Compute new standings + standing viewa
+
 
 }
 
@@ -179,7 +209,9 @@ Tournament.prototype.scheduleNextRound = function(round) {
 
 Tournament.prototype.broadcastStateChange = function() {
 	// Informs players of state change
-	controller.informUniformly(this.userList, this.currentState.getClientMsg());
+	console.log("CONTROLLER BRLOW");
+	console.log(controller);
+	//controller.informUniformly(this.userList, this.currentState.getClientMsg());
 }
 
 Tournament.prototype.getStateName = function() {
