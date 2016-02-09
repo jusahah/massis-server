@@ -70,7 +70,7 @@ module.exports = {
 			return {success: false, reason: "Tournament does not take new registrations anymore"};
 		}
 		// All is fine, create user into domain layer!
-		var uid = idsToUsers.createUser(msgMechanism);
+		var uid = idsToUsers.createUser(msgMechanism, tournamentID);
 		// We could potentially check if uid is truthy and thus allow idsToUsers have max users limit on this server
 		// But naah... overkill for now
 

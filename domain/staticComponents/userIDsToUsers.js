@@ -10,12 +10,12 @@ module.exports = {
 		}
 		return null;
 	},
-	createUser: function(msgMechanism) {
+	createUser: function(msgMechanism, tournamentID) {
 		// MsgMechanism is socket connected to user
 		// Decides user ID 
 		++idCounter;
 		var id = parseInt(Date.now().toString() + idCounter.toString()); 
-		usersTable[id] = User(id, msgMechanism);
+		usersTable[id] = User(id, msgMechanism, tournamentID);
 		return id;
 	},
 	getListOfUsers: function(userIDs) {

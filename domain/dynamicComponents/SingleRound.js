@@ -21,6 +21,8 @@ function SingleRound(userList, question, timeToAnswer, expireCallback) {
 
 	this.openForAnswers = false;
 	this.alreadyAnswered = {};
+
+	this.roundStartTime;
 }
 
 SingleRound.prototype.start = function() {
@@ -39,7 +41,7 @@ SingleRound.prototype.start = function() {
 			questionID: Date.now() + "_" + randomInt() 
 		}
 	});
-
+	this.roundStartTime = Date.now();
 	setTimeout(function() {
 		this.closeRound();
 	}.bind(this), this.timeToAnswer);
@@ -51,13 +53,19 @@ SingleRound.prototype.closeRound = function() {
 	// This round's responsibilites stop here
 }
 
+SingleRound.prototype.resolveTimeTaken = function() {
+	return Date.now() - this.roundStartTime;
+}
+
 SingleRound.prototype.answerIn = function(uid, answer, timeTaken) {
+	console.warn("Answer did reach round object");
 	if (this.alreadyAnswered.hasOwnProperty(uid)) return false;
-	timeTaken = timeTaken || this.timeToAnswer;
+	timeTaken = timeTaken || this.resolveTimeTaken();
 	this.alreadyAnswered[uid] = true;
 	var wasCorrect = this.question.evalAnswer(answer);
 	var score      = this.scorer.score(wasCorrect, timeTaken);
 	this.rr.addPoints(uid, score);
+	console.warn("Score added for player: " + uid + ", score: " + score);
 	return true;
 }
 

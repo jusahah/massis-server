@@ -122,6 +122,13 @@ function Tournament(data) {
 Tournament.prototype.msgFromPlayer = function(uid, msg) {
 	console.error("MSG FROM PLAYER")
 	this.visualLogger.msgFromPlayer(uid, msg);
+	if (msg.tag === 'answerIn') {
+		if (this.currentState.name === 'waitingForAnswers') {
+			// Eval answer in round object
+			var answer = msg.data;
+			this.round.answerIn(uid, answer);
+		}
+	}
 }
 
 Tournament.prototype.getStatusInfo = function() {
@@ -150,7 +157,12 @@ Tournament.prototype.playerLeft = function(uid) {
 	// It is bit peculiar but we actually dont need to do anything here
 	// Well, actually, we might want to store this info so clients can be sent
 	// a list of disconnected users
-	this.leftDuringPlay.push(uid);
+	if (this.currentState.name === 'waitingForStart') {
+		this.deregisterUser(uid);
+	} else {
+		this.leftDuringPlay.push(uid);
+	}
+	
 	return true;
 
 }
@@ -185,6 +197,7 @@ Tournament.prototype.changeState = function(newState) {
 Tournament.prototype.tournamentOver = function() {
 	this.visualLogger.infoMsg('Ending tournament');
 	this.changeState(new TournamentEnded(this));
+	this.
 
 }
 
@@ -232,10 +245,6 @@ Tournament.prototype.computeNewStandings = function(endedRound) {
 }
 
 Tournament.prototype.allowsRegistration = function() {
-	console.log("ALLOWS REGISTRATION METHOD");
-	console.log(this.currentState.name);
-	console.log(this.userList.length);
-	console.log(this.tournamentData.maxPlayers);
 	if (this.currentState.name !== 'waitingForStart') return false;
 	if (this.tournamentData.maxPlayers <= this.userList.length) return false;	
 	return true;
@@ -255,8 +264,7 @@ Tournament.prototype.scheduleNextRound = function(round) {
 
 Tournament.prototype.broadcastStateChange = function() {
 	// Informs players of state change
-	console.log("msgSink BRLOW");
-	console.log(msgSink);
+	msgSink.informUniformly(this.userList, {tag: 'stateChange', state: this.currentState.name});
 	//msgSink.informUniformly(this.userList, this.currentState.getClientMsg());
 }
 
@@ -266,12 +274,22 @@ Tournament.prototype.getStateName = function() {
 }
 
 Tournament.prototype.registerUser = function(uid) {
-	// Do not call this method unless first VALIDATED that tournament can take in more players!
-	// Validation done elsewhere (this.allowRegistrations)
-	//if (this.currentState.name !== 'waitingForStart') return false;
-	//if (this.tournamentData.maxPlayers <= this.userList.length) return false;
+	if (!this.allowsRegistration()) return false;
 	this.userList.push(uid);
+	msgSink.informUniformly(this.userList, {tag: registeredNum, data: this.userList.length});
 	return true;
+}
+
+Tournament.prototype.deregisterUser = function(uid) {
+	// Can only be done before Tournament has started, check it first
+	// This could be performance problem? O(n) search and probably same removal
+	var i = this.userList.indexOf(uid);
+	if (i !== -1) this.userList.splice(i, 1);
+	else return false;
+	msgSink.informUniformly(this.userList, {tag: registeredNum: this.userList.length});
+	return true;
+	
+	return false;
 }
 
 // Get total num of questions
