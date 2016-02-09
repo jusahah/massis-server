@@ -18,6 +18,9 @@ User.prototype.send = function(msg) {
 User.prototype.getID = function() {
 	return this.id;
 }
+User.prototype.getTournamentID = function() {
+	return this.tournamentID;
+}
 
 User.prototype.init = function() {
 	this.msgMechanism.setUser(this);
@@ -27,6 +30,7 @@ User.prototype.init = function() {
 
 User.prototype.msgMechanismIsDown = function() {
 	console.log("USER " + this.id + ": Connection down");
+	controller
 }
 User.prototype.msgMechanismIsUp = function() {
 	console.log("USER " + this.id + ": Connection up!");

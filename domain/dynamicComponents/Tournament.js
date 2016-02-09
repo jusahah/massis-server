@@ -163,6 +163,11 @@ Tournament.prototype.roundEnded = function() {
 
 }
 
+Tournament.prototype.allowRegistrations = function() {
+	if (this.currentState.name !== 'waitingForStart') return false;
+	if (this.tournamentData.maxPlayers <= this.userList.length) return false;	
+}
+
 Tournament.prototype.scheduleNextRound = function(round) {
 	// Settimeout something to launch round
 	// For now just use setTimeout
@@ -183,7 +188,10 @@ Tournament.prototype.getStateName = function() {
 }
 
 Tournament.prototype.registerUser = function(uid) {
-	if (this.tournamentData.maxPlayers <= this.userList.length) return false;
+	// Do not call this method unless first VALIDATED that tournament can take in more players!
+	// Validation done elsewhere (this.allowRegistrations)
+	//if (this.currentState.name !== 'waitingForStart') return false;
+	//if (this.tournamentData.maxPlayers <= this.userList.length) return false;
 	this.userList.push(uid);
 	return true;
 }
