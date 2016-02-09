@@ -54,6 +54,15 @@ WaitingForAnswers.prototype.getClientMsg = function() {
 	return {tag: 'stateChange', state: this.name};
 }
 
+function TournamentEnded(tournament) {
+	this.tournament = tournament;
+	this.name = 'tournamentEnded';
+}
+
+TournamentEnded.prototype.getClientMsg = function() {
+	return {tag: 'stateChange', state: this.name};
+}
+
 // Tournament object
 function Tournament(data) {
 	this.tournamentData = data;
@@ -63,6 +72,8 @@ function Tournament(data) {
 	
 	this.currentState;
 	this.round;
+	// Standings of players (Standings object)
+	this.currentStandings;
 
 	this.tournamentInvalid = false;
 
@@ -84,7 +95,7 @@ function Tournament(data) {
 
 		// all is good, we still need to check questions data though
 		this.buildQuestionVault(this.tournamentData.questions);
-		this.currentState = new WaitingForStartState(this);
+		this.changeState(new WaitingForStartState(this));
 	}
 
 	this.init();
@@ -109,28 +120,59 @@ Tournament.prototype.tournamentOver = function() {
 }
 
 Tournament.prototype.start = function() {
-	this.currentState = new PreparingNextQuestion(this);
+	this.currentStandings = Standings(this.userList); // Initialize Standings object
+	this.changeState(new PreparingNextQuestion(this)); // Move to new state
 	var q = this.questionVault.getNextQuestion();
 	if (!q) {
 		// Tournament over
+		console.error("TOURNAMENT: Tournament ended without a single question being played: " + Date.now());
 		return this.tournamentOver();
 	}
-	this.round = SingleRound(q, this.tournamentData.timeToAnswer, this.roundEnded.bind(this));
+	this.round = SingleRound(this.userList, q, this.tournamentData.timeToAnswer, this.roundEnded.bind(this));
 	this.scheduleNextRound(this.round);
-	this.tournamentStateChange();
+
+
+}
+
+Tournament.prototype.changeState = function(newState) {
+	this.currentState = newState;
+	this.broadcastStateChange();
+}
+
+Tournament.prototype.tournamentOver = function() {
+	this.changeState(new TournamentEnded(this));
 
 }
 
 Tournament.prototype.roundEnded = function() {
 	// Handle round ending
 	// Call new standings infering stuff
+	var endedRound = this.round;
+	if (this.questionVault.getQuestionsLeft() !== 0) {
+		// Tournament goes on
+		this.changeState(new PreparingNextQuestion(this));
+		var q = this.questionVault.getNextQuestion();
+		this.round = SingleRound(this.userList, q, this.tournamentData.timeToAnswer, this.roundEnded.bind(this));
+		this.scheduleNextRound(this.round);
+	} else {
+		this.tournamentOver();
+	}
+
+	// While we are waiting for next round (or have ended) lets compute new standings
+	this.currentStandings = this.computeNewStandings(endedRound);
+
 }
 
 Tournament.prototype.scheduleNextRound = function(round) {
 	// Settimeout something to launch round
+	// For now just use setTimeout
+	setTimeout(function() {
+		this.changeState(new WaitingForAnswers(this));
+		round.start();
+	}.bind(this), this.tournamentData.timeBetweenQuestions);
 }
 
-Tournament.prototype.tournamentStateChange = function() {
+Tournament.prototype.broadcastStateChange = function() {
 	// Informs players of state change
 	controller.informUniformly(this.userList, this.currentState.getClientMsg());
 }

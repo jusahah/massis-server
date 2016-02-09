@@ -38,6 +38,10 @@ Question.prototype.isQuestionInvalid = function() {
 
 }
 
+Question.prototype.getChoices = function() {
+	return this.questionData.choices;
+}
+
 Question.prototype.getChoice = function(choice) {
 	return this.questionData.choices[choice];
 }
