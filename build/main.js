@@ -1148,7 +1148,7 @@ function CytoUser(cytoController, tid) {
 		this.cytoController.stateChange(this.uid, toState);
 		// Fake answering
 		if (toState === 'waitingForAnswers') {
-			setTimeout(this.fakeAnswer.bind(this), 1000 + Math.random() * 4000);
+			setTimeout(this.fakeAnswer.bind(this), 1000 + Math.random() * 3000);
 		}
 	};
 
@@ -1305,7 +1305,7 @@ var cytoController = function () {
 	var stateColors = {
 		'waitingForStart': '#555',
 		'preparingNextQuestion': '#4499aa',
-		'waitingForAnswers': '#FFFF66',
+		'waitingForAnswers': '#eeff11',
 		'tournamentEnded': '#112211'
 	};
 	var connectionDown = function (uid, tid) {
@@ -1337,12 +1337,12 @@ var cytoController = function () {
 		// Flash msg line
 		var edge = cy.getElementById(tid + "_" + uid);
 		edge.style({
-			'line-color': '#88eeff',
+			'line-color': '#33eeff',
 			'width': 6
 		});
 		setTimeout(function () {
 			edge.style({
-				'line-color': '#ccc',
+				'line-color': '#aaa',
 				'width': 4
 			});
 		}, 180);
@@ -1357,7 +1357,7 @@ var cytoController = function () {
 
 		setTimeout(function () {
 			edge.style({
-				'line-color': '#ccc',
+				'line-color': '#aaa',
 				'width': 4
 			});
 		}, 180);
@@ -1392,19 +1392,27 @@ function cyReady() {
 	_.each(tids, function (tid) {
 		var serverNode = cy.getElementById(tid);
 		serverNode.style({
-			'background-color': 'purple'
+			'background-color': 'purple',
+			'border-width': 2,
+			'border-color': '#222',
+			'border-style': 'solid',
+			'width': '40px',
+			'height': '40px'
 		});
 	});
 }
 function addServerToCyArray(tid) {
 	cyNodesArr.push({
-		data: { id: tid }
+		data: { id: tid, group: tid }
 	});
 }
 
 function addToCyArray(uid, tid) {
 	cyNodesArr.push({
-		data: { id: uid }
+		data: {
+			id: uid,
+			group3: tid
+		}
 	});
 	cyNodesArr.push({
 		data: { id: tid + "_" + uid, source: tid, target: uid }
@@ -1430,7 +1438,12 @@ function createCY() {
 			selector: 'node',
 			style: {
 				'background-color': '#666',
-				'label': 'data(id)'
+				'border-width': 2,
+				'border-color': '#222',
+				'border-style': 'solid',
+				'label': 'data(id)',
+				'width': '20px',
+				'height': '20px'
 			}
 		}, {
 			selector: 'edge',
@@ -1443,8 +1456,9 @@ function createCY() {
 		}],
 
 		layout: {
-			name: 'random',
-			rows: 1
+			name: 'circle',
+			rows: 1,
+			radius: 10
 		}
 	});
 }
@@ -1453,7 +1467,7 @@ var userIDsToFakeUsers = {};
 // We can start playing against ourselves here
 
 // Note that JOI validation does not work on browsers
-for (var i2 = 2; i2 >= 0; i2--) {
+for (var i2 = 3; i2 >= 0; i2--) {
 	var tid = controller.addTournament({
 		maxPlayers: 13,
 		name: "Tuesday Special",
@@ -1513,9 +1527,9 @@ for (var i2 = 2; i2 >= 0; i2--) {
 			},
 			answer: 'd'
 		}],
-		timeToAnswer: Math.random() * 10000 + 5000,
-		timeBetweenQuestions: 3000 + Math.floor(Math.random() * 6000),
-		startsAt: Date.now() + (Math.random() * 4 + 20) * 1000
+		timeToAnswer: Math.random() * 2000 + 3000,
+		timeBetweenQuestions: 3000 + Math.floor(Math.random() * 2000),
+		startsAt: Date.now() + 118 * 1000 + Math.random() * 2000 + 200
 	});
 	addServerToCyArray(tid);
 	tids.push(tid);
@@ -1587,6 +1601,18 @@ for (var i = 10; i >= 0; i--) {
 };
 */
 createCY();
+
+setTimeout(function () {
+	showLaunchingText();
+}, 118 * 1000);
+
+function showLaunchingText() {
+	var html = "<h2 id='launch'>Launching servers...</h2>";
+	jquery('body').append(html);
+	setTimeout(function () {
+		jquery('body').find('#launch').hide();
+	}, 4000);
+}
 
 function buildAnswerView(uid) {
 	var answerButtons = "<button id='a'>A</button><button id='b'>B</button><button id='c'>C</button><button id='d'>D</button>";

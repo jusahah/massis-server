@@ -256,7 +256,7 @@ function CytoUser(cytoController, tid) {
 		this.cytoController.stateChange(this.uid, toState);
 		// Fake answering
 		if (toState === 'waitingForAnswers') {
-			setTimeout(this.fakeAnswer.bind(this), 1000+Math.random()*4000);
+			setTimeout(this.fakeAnswer.bind(this), 1000+Math.random()*3000);
 		}
 		
 
