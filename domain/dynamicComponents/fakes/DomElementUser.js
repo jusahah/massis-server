@@ -139,7 +139,7 @@ function DomElementUser(uid, element) {
 		*/
 		
 
-		console.error("HTML BUILT: " + html);
+		//console.error("HTML BUILT: " + html);
 		console.log(ul);
 		ul.empty().append(html);		
 	}
@@ -156,7 +156,7 @@ function DomElementUser(uid, element) {
 
 		};
 
-		console.error("HTML BUILT: " + html);
+		//console.error("HTML BUILT: " + html);
 		console.log(ul);
 		ul.empty().append(html);
 	}
@@ -177,4 +177,126 @@ function DomElementUser(uid, element) {
 	}
 }
 
-module.exports = DomElementUser;
+
+
+
+
+
+
+
+
+
+
+/// Alternative to DOMUserElement
+// Follows same API
+function CytoUser(cytoController, tid) {
+	this.cytoController = cytoController;
+	this.tid = tid;
+	this.uid
+	this.user;
+	this.element
+
+	this.downCb;
+	this.upCb;
+	this.msgCb;
+
+	this.receive = function(msg) {
+
+			console.log("Sending msg down the socket: " + this.uid);
+			this.cytoController.msgReceived(this.uid, this.tid);
+			if (this.msgCb) this.msgCb(msg);
+		
+		
+	}
+	this.send = function(msg) {
+		setTimeout(function() {
+			this.cytoController.msgSent(this.uid, this.tid);
+		}.bind(this), 150)
+		if (msg.tag === 'stateChange') {
+			var newState = msg.state;
+			this.changeState(newState);
+		} else if (msg.tag === 'newStandings') {
+			var standingsView = msg.data;
+			if (!standingsView.hasOwnProperty('neighbours')) this.showNewStandingsAllInOne(standingsView);
+			else this.showNewStandingsNeighbours(standingsView);
+		} else if (msg.tag === 'answerEvaluated') {
+			var wasCorrect = msg.data;
+			this.cytoController.answerEvaluated(this.uid, wasCorrect);
+			this.showAnswerEvaluated(wasCorrect);
+		} else if (msg.tag === 'registeredNum') {
+			var num = msg.data;
+			this.showRegisteredNum(num);
+		} 
+		//this.element.find('.msgUL').append('<li>' + JSON.stringify(msg) + '</li>');
+		
+	}
+	this.setUID = function(uid) {
+		this.uid = uid;
+	}
+	this.setElement = function(element) {
+		this.element = element;
+	}
+	this.setUser = function(user) {
+		this.user = user;
+	}
+	this.onConnectionDown = function(cb) {
+		this.cytoController.connectionDown(this.uid, this.tid);
+		this.downCb = cb;
+	}
+	this.onConnectionUp = function(cb) {
+		this.cytoController.connectionUp(this.uid, this.tid);
+		this.upCb = cb;
+	}
+	this.onMessage = function(cb) {
+		this.msgCb = cb;
+	}
+
+	this.changeState = function(toState) {
+
+		this.cytoController.stateChange(this.uid, toState);
+		// Fake answering
+		if (toState === 'waitingForAnswers') {
+			setTimeout(this.fakeAnswer.bind(this), 1000+Math.random()*4000);
+		}
+		
+
+	}
+
+	this.fakeAnswer = function() {
+		var r = Math.random();
+		var choice = 'd';
+		if (r < 0.25) choice = 'a';
+		else if (r > 0.25 && r < 0.50) choice = 'b';
+		else if (r > 0.50 && r < 0.75) choice = 'c';
+		this.receive({tag: 'answerIn', data: choice});
+	}
+
+
+	this.mergeTwoStandingsObjectsToIterableRanking = function(top5, neighs, rank) {
+		
+	}
+
+	this.showNewStandingsNeighbours = function(standingsView) {
+		
+	}
+
+	this.showNewStandingsAllInOne = function(standingsView) {
+		
+	}
+
+	this.showAnswerEvaluated = function(wasCorrect) {
+		
+	}
+
+	this.showRegisteredNum = function(num) {
+	
+	}
+
+	this.tournamentEnded = function(standingsView) {
+
+	}	
+
+
+}
+module.exports   = CytoUser;
+//module.exports = DomElementUser;
