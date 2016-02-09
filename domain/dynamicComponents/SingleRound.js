@@ -66,7 +66,7 @@ SingleRound.prototype.answerIn = function(uid, answer, timeTaken) {
 	var score      = this.scorer.score(wasCorrect, timeTaken);
 	this.rr.addPoints(uid, score);
 	console.warn("Score added for player: " + uid + ", score: " + score);
-	return true;
+	return {wasCorrect: wasCorrect};
 }
 
 SingleRound.prototype.getRoundResults = function() {

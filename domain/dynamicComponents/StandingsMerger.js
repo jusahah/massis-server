@@ -87,6 +87,7 @@ function StandingsMerger(standings, roundResults) {
 		standingsViews[uid2] = {};
 		standingsViews[uid2].top5 = topFive;
 		standingsViews[uid2].neighbours = {};
+		standingsViews[uid2].yourRank = (i+1);
 
 		if (i-2 >= 0) {
 			standingsViews[uid2].neighbours[0] = newPoints[i-2];

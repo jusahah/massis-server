@@ -5,8 +5,8 @@
 
 	<style>
 	.userel {
-		height: 420px;
-		width: 400px;
+		height: 220px;
+		width: 200px;
 		margin: 8px;
 		display: inline-block;
 		font-size: 11px;
@@ -17,8 +17,8 @@
 		padding: 4px;
 	}
 	.tournamentel {
-		height: 420px;
-		width: 400px;
+		height: 360px;
+		width: 300px;
 		margin: 8px;
 		display: inline-block;
 		font-size: 11px;
@@ -28,18 +28,22 @@
 		overflow-y: auto;
 		padding: 4px;
 	}
-	.msgUL {
+	.msgUL, .standingsUL {
 		list-style: none;
 		margin-left: 0px;
 		padding: 2px;
 
 	}
 
-	.msgUL li {
+	.msgUL li, .standingsUL li {
 		border-width: 2px;
 		border-color: orange;
 		border-style: dotted;
 		margin-bottom: 4px;
+	}
+
+	.standingsUL li.me {
+		background-color: #aa88cc;
 	}
 
 	ul > li:nth-of-type(odd) {
@@ -51,6 +55,16 @@
 	    background-color: #fff ;
 	    color: black;
 	}	
+
+	button {
+		width: 50px;
+
+	}
+
+	.answerLight {
+		width: 6px;
+		height: 6px;
+	}
 	</style>
 	
 </head>

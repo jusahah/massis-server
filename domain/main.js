@@ -36,7 +36,7 @@ msgSink.setUsersTable(idsToUsers);
 
 // Note that JOI validation does not work on browsers
 var tid = controller.addTournament({
-	maxPlayers: 5,
+	maxPlayers: 13,
 	name: "Tuesday Special",
 	description: "Win huge prizes, like hot air balloons. Only on tuesdays",
 	questions: [
@@ -82,31 +82,36 @@ var tid = controller.addTournament({
 		}					
 
 	],
-	timeToAnswer: 5000,
-	timeBetweenQuestions: 5000,
-	startsAt: Date.now() + 4 * 1000
+	timeToAnswer: 4000,
+	timeBetweenQuestions: 600000,
+	startsAt: Date.now() + 2 * 1000
 });
 
+var userIDsToFakeUsers = {};
 
-
-for (var i = 5; i >= 0; i--) {
+for (var i = 10; i >= 0; i--) {
 	var u = new DomElementUser();
 	var registrationResult = controller.userJoined(tid, u);
 	if (registrationResult.success) {
-		var answerButtons = "<button id='a'>A</button><button id='b'>B</button><button id='c'>C</button><button id='d'>D</button>"
-		var html = "<div class='userel' id='user_" + registrationResult.uid + "'><h4 style='text-align: center;'>" + registrationResult.uid + "</h4><ul class='msgUL'></ul>" + answerButtons + "</div>";
+		var html = "<div class='userel' id='user_" + registrationResult.uid + "'><h4 style='text-align: center;'>" + registrationResult.uid + "</h4><div class='answerLight'></div>";
+		html += buildAnswerView(registrationResult.uid);
+		html += buildStandingsView(registrationResult.uid);
+		html += buildWaitForStartView(uid);
+		html += "</div>";
 		jquery('#users').append(html);
 		var ue = jquery('#users').find("#user_" + registrationResult.uid);
 		u.setElement(ue);
 		u.setUID(registrationResult.uid);
 		var uid = registrationResult.uid;
 		// We connect user object straight to the element he is managing
-		ue.customFakeUser = u;
+		userIDsToFakeUsers[uid] = u;
 		ue.on('click', function(e) {
 			if (jquery(e.target).prop("tagName").toUpperCase() === 'BUTTON') {
-				console.log("BUTTON CLICK");
+				var divEl = jquery(e.target).parents('.userel');
+				var uid = divEl.attr('id').split("_")[1];
+				console.log("BUTTON CLICK for " + uid);
 				var choice = jquery(e.target).attr('id');
-				ue.customFakeUser.receive({tag: 'answerIn', data: choice});
+				userIDsToFakeUsers[uid].receive({tag: 'answerIn', data: choice});
 			}
 		});
 	}
@@ -117,7 +122,26 @@ for (var i = 5; i >= 0; i--) {
 
 
 
+function buildAnswerView(uid) {
+	var answerButtons = "<button id='a'>A</button><button id='b'>B</button><button id='c'>C</button><button id='d'>D</button>"
+	var html =  answerButtons + "<ul class='msgUL'></ul>";
+	html = "<div class='stateview waitingForAnswers' data-statename='waitingForAnswers'>" + html + "</div>";
+	return html;
+}
 
+function buildStandingsView(uid) {
+	var html = "<div class='stateview preparingNextQuestion' data-statename='preparingNextQuestion'>";
+	html += "<ul class='standingsUL'></ul>";
+	html += "</div>";
+	return html;
+}
+
+function buildWaitForStartView(uid) {
+	var html = "<div class='stateview waitingForStart' data-statename='waitingForStart'>";
+	html += "<h1 class='registeredNum' style='text-align: center;'></h1>";
+	html += "</div>";
+	return html;	
+}
 
 
 var info = controller.getTournamentStatusInfo(tid);

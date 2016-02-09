@@ -120,13 +120,15 @@ function Tournament(data) {
 }
 
 Tournament.prototype.msgFromPlayer = function(uid, msg) {
-	console.error("MSG FROM PLAYER")
+	console.error("MSG FROM PLAYER: " + uid);
 	this.visualLogger.msgFromPlayer(uid, msg);
 	if (msg.tag === 'answerIn') {
 		if (this.currentState.name === 'waitingForAnswers') {
 			// Eval answer in round object
 			var answer = msg.data;
-			this.round.answerIn(uid, answer);
+			var resObject = this.round.answerIn(uid, answer);
+			var wasCorrect = resObject.wasCorrect;
+			msgSink.informUser(uid, {tag: 'answerEvaluated', data: wasCorrect});
 		}
 	}
 }
@@ -157,9 +159,13 @@ Tournament.prototype.playerLeft = function(uid) {
 	// It is bit peculiar but we actually dont need to do anything here
 	// Well, actually, we might want to store this info so clients can be sent
 	// a list of disconnected users
+
+	// If we are still waiting for start
 	if (this.currentState.name === 'waitingForStart') {
+		// Purge user out
 		this.deregisterUser(uid);
 	} else {
+		// Tournament has already started, can only deactivate, not leave
 		this.leftDuringPlay.push(uid);
 	}
 	
@@ -181,7 +187,7 @@ Tournament.prototype.start = function() {
 	this.round = SingleRound(this.userList, q, this.tournamentData.timeToAnswer, this.roundEnded.bind(this));
 	console.log("ROUND INSERTED");
 	console.log(this.round);
-	this.scheduleNextRound(this.round);
+	this.scheduleNextRound(this.round, true);
 	console.log("MSG SINK");
 	console.log(msgSink);
 	msgSink.informUniformly(this.userList, {tag: 'tournamentStarts'});
@@ -197,8 +203,7 @@ Tournament.prototype.changeState = function(newState) {
 Tournament.prototype.tournamentOver = function() {
 	this.visualLogger.infoMsg('Ending tournament');
 	this.changeState(new TournamentEnded(this));
-	this.
-
+	msgSink.informUniformly(this.userList, {tag: 'tournamentEnded', data: this.standings.finalStandings()});
 }
 
 Tournament.prototype.roundEnded = function() {
@@ -250,16 +255,17 @@ Tournament.prototype.allowsRegistration = function() {
 	return true;
 }
 
-Tournament.prototype.scheduleNextRound = function(round) {
+Tournament.prototype.scheduleNextRound = function(round, isFirst) {
 	// Settimeout something to launch round
 	// For now just use setTimeout
+	var timeSpan = isFirst ? 2000 : this.tournamentData.timeBetweenQuestions;
 	console.log("Scheduling next round: " + this.tournamentData.timeBetweenQuestions);
 	this.visualLogger.infoMsg('Scheduling next round');
 	setTimeout(function() {
 		this.visualLogger.infoMsg('Start round');
 		this.changeState(new WaitingForAnswers(this));
 		round.start();
-	}.bind(this), this.tournamentData.timeBetweenQuestions);
+	}.bind(this), timeSpan);
 }
 
 Tournament.prototype.broadcastStateChange = function() {
@@ -276,7 +282,8 @@ Tournament.prototype.getStateName = function() {
 Tournament.prototype.registerUser = function(uid) {
 	if (!this.allowsRegistration()) return false;
 	this.userList.push(uid);
-	msgSink.informUniformly(this.userList, {tag: registeredNum, data: this.userList.length});
+	msgSink.informUniformly(this.userList, {tag: 'registeredNum', data: this.userList.length});
+	msgSink.informUser(uid, {tag: 'stateChange', state: this.currentState.name});
 	return true;
 }
 
@@ -286,10 +293,9 @@ Tournament.prototype.deregisterUser = function(uid) {
 	var i = this.userList.indexOf(uid);
 	if (i !== -1) this.userList.splice(i, 1);
 	else return false;
-	msgSink.informUniformly(this.userList, {tag: registeredNum: this.userList.length});
+	msgSink.informUniformly(this.userList, {tag: 'registeredNum', data: this.userList.length});
 	return true;
 	
-	return false;
 }
 
 // Get total num of questions

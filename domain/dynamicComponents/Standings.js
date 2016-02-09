@@ -24,6 +24,10 @@ Standings.prototype.init = function() {
 		console.log(this.userIDToRanking);
 }
 
+Standings.prototype.finalStandings = function() {
+	return 1;
+}
+
 Standings.prototype.getUsers = function() {
 	return this.userIDs;
 }
