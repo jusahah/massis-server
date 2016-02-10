@@ -1,13 +1,12 @@
 var request = require('request-json');
-var laravel = request.createClient('http://localhost:8888/'); // Laravel address goes here
+var laravel = request.createClient('http://localhost'); // Laravel address goes here
 
-module.exports = function(ownIP, tournamentsFoundCb) {
+module.exports = function(ownIP, laravelApiKey, tournamentsFoundCb) {
 	var fetchIntervalHandle;
 	var fetch = function() {
-		laravel.get('tournaments/', function(err, res, body) {
+		laravel.post('visamestari/api/tournaments/', {key: laravelApiKey}, function(err, res, body) {
 			if (err) return;
 			var tournaments = body.rows[0].tournaments;
-
 			if (tournaments.length !== 0) {
 				// Send to whoever provided callback
 				tournamentsFoundCb(tournaments);	

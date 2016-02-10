@@ -111,7 +111,7 @@ module.exports = {
 		}
 	},
 
-	
+
 	//-------------------------------------
 	// OFFICIAL API PART
 	//-------------------------------------
@@ -141,6 +141,7 @@ module.exports = {
 	// SETTERS, MODIFIERS (provide way to modify system state in realtime)
 	//
 	addTournament: function(tournamentData) {
+		alert("ADDING TOURNAE");
 		// Consider validation data object with Joi
 		/* OBSOLETE - decided to go with basic timestamp validation
 		// Turn tournamentData.startsAt into Date object if its timestamp

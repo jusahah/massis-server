@@ -159,7 +159,7 @@ Tournament.prototype.getStatusInfo = function() {
 Tournament.prototype.getFinalRaport = function() {
 	// For now just return decorated statusInfo
 	var statusInfo = this.getStatusInfo();
-	statusInfo.finalStandings = this.standings.finalStandings();
+	statusInfo.finalStandings = this.currentStandings.finalStandings();
 
 	return statusInfo;
 }
@@ -230,7 +230,7 @@ Tournament.prototype.changeState = function(newState) {
 Tournament.prototype.tournamentOver = function() {
 	this.visualLogger.infoMsg('Ending tournament');
 	this.changeState(new TournamentEnded(this));
-	msgSink.informUniformly(this.userList, {tag: 'tournamentEnded', data: this.standings.finalStandings()});
+	msgSink.informUniformly(this.userList, {tag: 'tournamentEnded', data: this.currentStandings.finalStandings()});
 	msgSink.msgToController({tag: 'tournamentDone', data: this.getFinalRaport()});
 }
 

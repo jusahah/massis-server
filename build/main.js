@@ -85,9 +85,29 @@ function tournamentDataSanitization(data) {
 
 // DOMAIN-LAYER FACADE
 module.exports = {
+	callbacks: {
+		tournamentDone: null
+	},
 	test: function () {
 		return 1;
 	},
+
+	// PLUG-IN PART FOR OTHER PARTS OF SYSTEM GET NOTIFICATION FROM DOMAIN
+	whenTournamentDone: function (cb) {
+		this.callbacks.tournamentDone = cb;
+	},
+
+	// --------------------------------
+	// SYSTEM INNER API
+	// --------------------------------
+	msgFromComponent: function (msg) {
+		if (msg.tag === 'tournamentDone') {
+			if (this.callbacks.tournamentDone) {
+				this.callbacks.tournamentDone(msg.data);
+			}
+		}
+	},
+
 	//-------------------------------------
 	// OFFICIAL API PART
 	//-------------------------------------
@@ -115,6 +135,7 @@ module.exports = {
 	// SETTERS, MODIFIERS (provide way to modify system state in realtime)
 	//
 	addTournament: function (tournamentData) {
+		alert("ADDING TOURNAE");
 		// Consider validation data object with Joi
 		/* OBSOLETE - decided to go with basic timestamp validation
   // Turn tournamentData.startsAt into Date object if its timestamp
@@ -474,7 +495,7 @@ Standings.prototype.init = function () {
 };
 
 Standings.prototype.finalStandings = function () {
-	return 1;
+	return this.rankings;
 };
 
 Standings.prototype.getUsers = function () {
@@ -788,6 +809,14 @@ Tournament.prototype.getStatusInfo = function () {
 	return { currentState: this.currentState.name, startsAt: this.tournamentData.startsAt, playersIn: this.userList.length };
 };
 
+Tournament.prototype.getFinalRaport = function () {
+	// For now just return decorated statusInfo
+	var statusInfo = this.getStatusInfo();
+	statusInfo.finalStandings = this.currentStandings.finalStandings();
+
+	return statusInfo;
+};
+
 Tournament.prototype.dataValid = function () {
 	return this.tournamentInvalid === false;
 };
@@ -849,7 +878,8 @@ Tournament.prototype.changeState = function (newState) {
 Tournament.prototype.tournamentOver = function () {
 	this.visualLogger.infoMsg('Ending tournament');
 	this.changeState(new TournamentEnded(this));
-	msgSink.informUniformly(this.userList, { tag: 'tournamentEnded', data: this.standings.finalStandings() });
+	msgSink.informUniformly(this.userList, { tag: 'tournamentEnded', data: this.currentStandings.finalStandings() });
+	msgSink.msgToController({ tag: 'tournamentDone', data: this.getFinalRaport() });
 };
 
 Tournament.prototype.roundEnded = function () {
@@ -857,6 +887,14 @@ Tournament.prototype.roundEnded = function () {
 	// Call new standings infering stuff
 	var endedRound = this.round;
 	this.visualLogger.infoMsg('End round');
+
+	// New standings
+	var infoO = this.computeNewStandings(endedRound); // Returns standings + standing views
+	console.warn("INFO O");
+	console.log(infoO);
+	this.currentStandings = infoO.standings; // Set new standings
+	var views = infoO.standingsViews;
+
 	if (this.questionVault.getQuestionsLeft() !== 0) {
 		// Tournament goes on
 		this.changeState(new PreparingNextQuestion(this));
@@ -867,12 +905,6 @@ Tournament.prototype.roundEnded = function () {
 		this.tournamentOver();
 	}
 
-	// While we are waiting for next round (or have ended) lets compute new standings
-	var infoO = this.computeNewStandings(endedRound); // Returns standings + standing views
-	console.warn("INFO O");
-	console.log(infoO);
-	this.currentStandings = infoO.standings; // Set new standings
-	var views = infoO.standingsViews;
 	// Next lets broadcast standing views to all players
 	// A standing view is data object telling how a particular user sees the standings list
 	// We cannot user msgSink.informUniformly() as data going to different players is different
@@ -1640,37 +1672,10 @@ for (var i2 = 0; i2 >= 0; i2--) {
 				d: "Red Bull"
 			},
 			answer: 'a'
-		}, {
-			question: "Capital of Malawi?",
-			choices: {
-				a: "Windhoek",
-				b: "Maputo",
-				c: "Lilongwe",
-				d: "Pihtipudas"
-			},
-			answer: 'c'
-		}, {
-			question: "Capital of Malawi?",
-			choices: {
-				a: "Windhoek",
-				b: "Maputo",
-				c: "Lilongwe",
-				d: "Pihtipudas"
-			},
-			answer: 'b'
-		}, {
-			question: "Capital of Malawi?",
-			choices: {
-				a: "Windhoek",
-				b: "Maputo",
-				c: "Lilongwe",
-				d: "Pihtipudas"
-			},
-			answer: 'd'
 		}],
 		timeToAnswer: Math.floor(Math.random() * 2000) + 3000,
-		timeBetweenQuestions: 3000 + Math.floor(Math.random() * 2000),
-		startsAt: Date.now() + 8 * 1000 + Math.random() * 2000 + 200
+		timeBetweenQuestions: 1000 + Math.floor(Math.random() * 2000),
+		startsAt: Date.now() + 3 * 1000 + Math.random() * 2000 + 200
 	});
 	addServerToCyArray(tid);
 	tids.push(tid);
@@ -1813,6 +1818,10 @@ module.exports = {
 		if (user) {
 			user.send(msg);
 		}
+	},
+	// From layer component to another
+	msgToController: function (msg) {
+		this.controller.msgFromComponent(msg);
 	},
 	setController: function (controller) {
 		console.log("MSG SINK: Controller set!");

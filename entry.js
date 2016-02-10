@@ -17,6 +17,7 @@ var controller = require('./domain/controller');
 // Later move these into conf file
 var SOCKET_PORT = 8079; // Port socket.io is listening
 var MAX_USERS_ON_SERVER = 1000; // After this many users new sockets are denied
+var LARAVEL_KEY = 'visamestari'; // Encrypt in production
 
 var FETCHING_INTERVAL = 30 * 1000; // How often we fetch new tournaments from Laravel endpoint
 var MY_IP_ADDRESS     = // Own address to be sent to Laravel endpoint when fetching
@@ -38,7 +39,7 @@ userCountTracker.startTracking(1000*60); // Once every 1 min write users count t
 
 ///
 console.log("INIT: Tournament fetcher");
-var fetcher = tournamentFetcher(MY_IP_ADDRESS, function(tournaments) {
+var fetcher = tournamentFetcher(MY_IP_ADDRESS, LARAVEL_KEY, function(tournaments) {
 	_.each(tournaments, function(t) {
 		// Pass to controller
 		controller.addTournament(t);

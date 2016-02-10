@@ -270,43 +270,12 @@ for (var i2 = 0; i2 >= 0; i2--) {
 					d: "Red Bull"
 				},
 				answer: 'a',		
-			},
-			{
-				question: "Capital of Malawi?",
-				choices: {
-					a: "Windhoek",
-					b: "Maputo",
-					c: "Lilongwe",
-					d: "Pihtipudas"
-				},
-				answer: 'c',		
-			}					
-			,
-			{
-				question: "Capital of Malawi?",
-				choices: {
-					a: "Windhoek",
-					b: "Maputo",
-					c: "Lilongwe",
-					d: "Pihtipudas"
-				},
-				answer: 'b',		
-			}	
-			,
-			{
-				question: "Capital of Malawi?",
-				choices: {
-					a: "Windhoek",
-					b: "Maputo",
-					c: "Lilongwe",
-					d: "Pihtipudas"
-				},
-				answer: 'd',		
-			}				
+			}
+			
 		],
 		timeToAnswer: Math.floor(Math.random()*2000) + 3000,
-		timeBetweenQuestions: 3000 + Math.floor(Math.random()*2000),
-		startsAt: Date.now() + 8 * 1000 + Math.random()*2000 + 200
+		timeBetweenQuestions: 1000 + Math.floor(Math.random()*2000),
+		startsAt: Date.now() + 3 * 1000 + Math.random()*2000 + 200
 	});
 	addServerToCyArray(tid);
 	tids.push(tid);
