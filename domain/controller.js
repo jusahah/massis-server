@@ -1,6 +1,9 @@
 var _ = require('lodash');
 var idsToUsers = require('./staticComponents/userIDsToUsers');
 var idsToTournaments = require('./staticComponents/tournamentRefsTable');
+var userNamesToIDs   = require('./staticComponents/userNamesToIds');
+var validator        = require('validator');
+var xss              = require('xss-filters');
 
 // Straight from SO
 function isInt(value) {
@@ -15,6 +18,68 @@ function isInt(value) {
 /*
 	Provides high-level facace API for accessing domain layer and its services
 */
+
+// Tournament data schema looks like following:
+/*
+{
+		maxPlayers: 13,
+		name: "Tuesday Special",
+		description: "Win huge prizes, like hot air balloons. Only on tuesdays",
+		questions: [
+			{
+				question: "Capital of Algeria?",
+				choices: {
+					a: "Helsinki",
+					b: "Turku",
+					c: "Algiers",
+					d: "Porvoo"
+				},
+				answer: 'c',		
+			}
+			
+		],
+		timeToAnswer: Math.random()*2000 + 3000,
+		timeBetweenQuestions: 3000 + Math.floor(Math.random()*2000),
+		startsAt: Date.now() + 118 * 1000 + Math.random()*2000 + 200
+}
+*/
+function tournamentDataSanitization(data) {
+	// Integers dont need sanitization, they are checked later by Joi ensuring they are ints
+	// For string, we do double sanitization using two different libraries
+	// Overkill? Sure.
+	var sanitizedData = {
+		maxPlayers: data.maxPlayers,
+		name: xss.inHTMLData(validator.escape(data.name)),
+		description: xss.inHTMLData(validator.escape(data.description)),
+		timeToAnswer: data.timeToAnswer,
+		timeBetweenQuestions: data.timeBetweenQuestions,
+		startsAt: data.startsAt
+	}
+
+	// Questions is array so its sanitized separetely
+	var questions = data.questions;
+	var sanitizedQuestions = [];
+
+	_.each(questions, function(q) {
+		var sanitizedQuestion = {
+			question: xss.inHTMLData(validator.escape(q.question)),
+			choices: {
+				a: xss.inHTMLData(validator.escape(q.choices.a)).substring(0, 64),
+				b: xss.inHTMLData(validator.escape(q.choices.b)).substring(0, 64),
+				c: xss.inHTMLData(validator.escape(q.choices.c)).substring(0, 64),
+				d: xss.inHTMLData(validator.escape(q.choices.d)).substring(0, 64)
+			},
+			answer: xss.inHTMLData(validator.escape(q.answer))
+		}
+		sanitizedQuestions.push(sanitizedQuestion);
+	});
+
+	sanitizedData.questions = sanitizedQuestions;		
+
+	return sanitizedData;
+
+
+}
 
 
 // Controller provides main facade of domain-level services!
@@ -33,6 +98,7 @@ module.exports = {
 		}
 		// If its not int we trust that its a Date object already
 		*/
+		var tournamentData = tournamentDataSanitization(tournamentData); // Sanitize right away
 		var tid = idsToTournaments.insertTournament(tournamentData); // Returns tournament id (that was allocated)
 		if (!tid) {
 			// Data validation error
@@ -57,7 +123,7 @@ module.exports = {
 	// (every user must be connected with one and only one tournament)
 	// and msgMechanism (which is socket wrapper for typical web user)
 
-	userJoined: function(tournamentID, msgMechanism) {
+	userJoined: function(userName, tournamentID, msgMechanism) {
 		// First check that tournament is available and has not started yet
 		var tournament = idsToTournaments.getTournament(tournamentID);
 		if (!tournament) {
@@ -69,7 +135,18 @@ module.exports = {
 			// Tournament may have started already or it has capped max players limit
 			return {success: false, reason: "Tournament does not take new registrations anymore"};
 		}
+		// First sanitize username twice
+		userName = xss.inHTMLData(userName);   // 1st sanitization 
+		userName = validator.escape(userName); // 2nd sanitization
+		userName = validator.trim(userName); // Remove white spaces from both ends
+		userName = userName.substring(0, 24); // Remove overflow parts of the name
+
+		// Check username for clashes
+		if (!userNamesToIDs.checkNameAvailability(userName)) {
+			return {success: false, reason: "User name already in use!"};
+		}
 		// All is fine, create user into domain layer!
+		// Note that User object does not know its own userName - only the global table does
 		var uid = idsToUsers.createUser(msgMechanism, tournamentID);
 		// We could potentially check if uid is truthy and thus allow idsToUsers have max users limit on this server
 		// But naah... overkill for now

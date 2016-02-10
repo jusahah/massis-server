@@ -306,7 +306,7 @@ for (var i2 = 3; i2 >= 0; i2--) {
 		],
 		timeToAnswer: Math.random()*2000 + 3000,
 		timeBetweenQuestions: 3000 + Math.floor(Math.random()*2000),
-		startsAt: Date.now() + 8 * 1000 + Math.random()*2000 + 200
+		startsAt: Date.now() + 118 * 1000 + Math.random()*2000 + 200
 	});
 	addServerToCyArray(tid);
 	tids.push(tid);
@@ -315,8 +315,7 @@ for (var i2 = 3; i2 >= 0; i2--) {
 	var limit = 4 + Math.floor(Math.random()*8)
 	for (i = limit; i >= 0; i--) {
 		var u = new DomElementUser(cytoController, tid);
-		var userName = randomUserName();
-		var registrationResult = controller.userJoined(userName, tid, u);
+		var registrationResult = controller.userJoined(tid, u);
 		if (registrationResult.success) {
 			var html = "<div class='userel' id='user_" + registrationResult.uid + "'><h4 style='text-align: center;'>" + registrationResult.uid + "</h4><div class='answerLight'></div>";
 			html += buildAnswerView(registrationResult.uid);
@@ -387,15 +386,7 @@ setTimeout(function() {
 	showLaunchingText()
 }, 118 * 1000)
 
-function randomUserName() {
-	var CHARS = 'abcdefghijklmnopqrstu';
-	var l = CHARS.length;
-	var name = '';
-	for (var i = 4; i >= 0; i--) {
-		name += CHARS[Math.floor(Math.random()*l)];
-	};
-	return name;
-}
+
 
 function showLaunchingText() {
 	var html = "<h2 id='launch'>Launching servers...</h2>";

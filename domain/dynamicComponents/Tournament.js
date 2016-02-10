@@ -120,12 +120,16 @@ function Tournament(data) {
 }
 
 Tournament.prototype.msgFromPlayer = function(uid, msg) {
-	console.error("MSG FROM PLAYER: " + uid);
+
 	this.visualLogger.msgFromPlayer(uid, msg);
 	if (msg.tag === 'answerIn') {
 		if (this.currentState.name === 'waitingForAnswers') {
 			// Eval answer in round object
 			var answer = msg.data;
+
+			// Note that answer MUST be single letter
+			// This also stops doing any attacks as its hard to inject anything with one char
+			answer = answer.substring(0,1);
 			var resObject = this.round.answerIn(uid, answer);
 			var wasCorrect = resObject.wasCorrect;
 			msgSink.informUser(uid, {tag: 'answerEvaluated', data: wasCorrect});

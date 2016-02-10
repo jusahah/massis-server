@@ -2,6 +2,9 @@
 var _ = require('lodash');
 var idsToUsers = require('./staticComponents/userIDsToUsers');
 var idsToTournaments = require('./staticComponents/tournamentRefsTable');
+var userNamesToIDs = require('./staticComponents/userNamesToIds');
+var validator = require('validator');
+var xss = require('xss-filters');
 
 // Straight from SO
 function isInt(value) {
@@ -16,6 +19,66 @@ function isInt(value) {
 /*
 	Provides high-level facace API for accessing domain layer and its services
 */
+
+// Tournament data schema looks like following:
+/*
+{
+		maxPlayers: 13,
+		name: "Tuesday Special",
+		description: "Win huge prizes, like hot air balloons. Only on tuesdays",
+		questions: [
+			{
+				question: "Capital of Algeria?",
+				choices: {
+					a: "Helsinki",
+					b: "Turku",
+					c: "Algiers",
+					d: "Porvoo"
+				},
+				answer: 'c',		
+			}
+			
+		],
+		timeToAnswer: Math.random()*2000 + 3000,
+		timeBetweenQuestions: 3000 + Math.floor(Math.random()*2000),
+		startsAt: Date.now() + 118 * 1000 + Math.random()*2000 + 200
+}
+*/
+function tournamentDataSanitization(data) {
+	// Integers dont need sanitization, they are checked later by Joi ensuring they are ints
+	// For string, we do double sanitization using two different libraries
+	// Overkill? Sure.
+	var sanitizedData = {
+		maxPlayers: data.maxPlayers,
+		name: xss.inHTMLData(validator.escape(data.name)),
+		description: xss.inHTMLData(validator.escape(data.description)),
+		timeToAnswer: data.timeToAnswer,
+		timeBetweenQuestions: data.timeBetweenQuestions,
+		startsAt: data.startsAt
+	};
+
+	// Questions is array so its sanitized separetely
+	var questions = data.questions;
+	var sanitizedQuestions = [];
+
+	_.each(questions, function (q) {
+		var sanitizedQuestion = {
+			question: xss.inHTMLData(validator.escape(q.question)),
+			choices: {
+				a: xss.inHTMLData(validator.escape(q.choices.a)).substring(0, 64),
+				b: xss.inHTMLData(validator.escape(q.choices.b)).substring(0, 64),
+				c: xss.inHTMLData(validator.escape(q.choices.c)).substring(0, 64),
+				d: xss.inHTMLData(validator.escape(q.choices.d)).substring(0, 64)
+			},
+			answer: xss.inHTMLData(validator.escape(q.answer))
+		};
+		sanitizedQuestions.push(sanitizedQuestion);
+	});
+
+	sanitizedData.questions = sanitizedQuestions;
+
+	return sanitizedData;
+}
 
 // Controller provides main facade of domain-level services!
 module.exports = {
@@ -33,6 +96,7 @@ module.exports = {
   }
   // If its not int we trust that its a Date object already
   */
+		var tournamentData = tournamentDataSanitization(tournamentData); // Sanitize right away
 		var tid = idsToTournaments.insertTournament(tournamentData); // Returns tournament id (that was allocated)
 		if (!tid) {
 			// Data validation error
@@ -55,7 +119,7 @@ module.exports = {
 	// (every user must be connected with one and only one tournament)
 	// and msgMechanism (which is socket wrapper for typical web user)
 
-	userJoined: function (tournamentID, msgMechanism) {
+	userJoined: function (userName, tournamentID, msgMechanism) {
 		// First check that tournament is available and has not started yet
 		var tournament = idsToTournaments.getTournament(tournamentID);
 		if (!tournament) {
@@ -67,7 +131,18 @@ module.exports = {
 			// Tournament may have started already or it has capped max players limit
 			return { success: false, reason: "Tournament does not take new registrations anymore" };
 		}
+		// First sanitize username twice
+		userName = xss.inHTMLData(userName); // 1st sanitization
+		userName = validator.escape(userName); // 2nd sanitization
+		userName = validator.trim(userName); // Remove white spaces from both ends
+		userName = userName.substring(0, 24); // Remove overflow parts of the name
+
+		// Check username for clashes
+		if (!userNamesToIDs.checkNameAvailability(userName)) {
+			return { success: false, reason: "User name already in use!" };
+		}
 		// All is fine, create user into domain layer!
+		// Note that User object does not know its own userName - only the global table does
 		var uid = idsToUsers.createUser(msgMechanism, tournamentID);
 		// We could potentially check if uid is truthy and thus allow idsToUsers have max users limit on this server
 		// But naah... overkill for now
@@ -103,7 +178,7 @@ module.exports = {
 
 };
 
-},{"./staticComponents/tournamentRefsTable":17,"./staticComponents/userIDsToUsers":18,"lodash":21}],2:[function(require,module,exports){
+},{"./staticComponents/tournamentRefsTable":17,"./staticComponents/userIDsToUsers":18,"./staticComponents/userNamesToIds":19,"lodash":23,"validator":24,"xss-filters":25}],2:[function(require,module,exports){
 // Id we wanted to have some shared variables that
 // all questions see they would go here
 // var QUESTION_MAX_LENGTH = 128;
@@ -211,7 +286,7 @@ module.exports = function (questionsArr) {
 	return new QuestionVault(questionsArr);
 };
 
-},{"./Question":2,"lodash":21}],4:[function(require,module,exports){
+},{"./Question":2,"lodash":23}],4:[function(require,module,exports){
 
 function RoundResults() {
 
@@ -657,12 +732,16 @@ function Tournament(data) {
 }
 
 Tournament.prototype.msgFromPlayer = function (uid, msg) {
-	console.error("MSG FROM PLAYER: " + uid);
+
 	this.visualLogger.msgFromPlayer(uid, msg);
 	if (msg.tag === 'answerIn') {
 		if (this.currentState.name === 'waitingForAnswers') {
 			// Eval answer in round object
 			var answer = msg.data;
+
+			// Note that answer MUST be single letter
+			// This also stops doing any attacks as its hard to inject anything with one char
+			answer = answer.substring(0, 1);
 			var resObject = this.round.answerIn(uid, answer);
 			var wasCorrect = resObject.wasCorrect;
 			msgSink.informUser(uid, { tag: 'answerEvaluated', data: wasCorrect });
@@ -831,7 +910,7 @@ module.exports = function (data) {
 	return new Tournament(data);
 };
 
-},{"../msgSink":16,"./QuestionVault":3,"./Scorer":5,"./SingleRound":6,"./Standings":7,"./StandingsMerger":8,"./fakes/FakeJoi":13,"./fakes/VisualLogging":14,"lodash":21}],10:[function(require,module,exports){
+},{"../msgSink":16,"./QuestionVault":3,"./Scorer":5,"./SingleRound":6,"./Standings":7,"./StandingsMerger":8,"./fakes/FakeJoi":13,"./fakes/VisualLogging":14,"lodash":23}],10:[function(require,module,exports){
 var idsToTournaments = require('../staticComponents/tournamentRefsTable');
 
 // NOTE
@@ -1246,7 +1325,7 @@ function VisualLogger(name) {
 
 module.exports = VisualLogger;
 
-},{"jquery":20}],15:[function(require,module,exports){
+},{"jquery":22}],15:[function(require,module,exports){
 
 // For now this is mostly for testing
 // REQUIRING THIS ALLOW AUTORELOAD OF TESTS
@@ -1301,6 +1380,8 @@ msgSink.setUsersTable(idsToUsers);
 	],
 */
 
+// FakeUser objects take this controller as constr. param and then call it with their uids when something
+// of interest happens to them
 var cytoController = function () {
 	var stateColors = {
 		'waitingForStart': '#555',
@@ -1308,6 +1389,8 @@ var cytoController = function () {
 		'waitingForAnswers': '#eeff11',
 		'tournamentEnded': '#112211'
 	};
+
+	// Methods in this object basically just mirror user object methods
 	var connectionDown = function (uid, tid) {
 		console.log("CONNECTION DOWN IN CYTO");
 		if (!cy) return; // Not yet
@@ -1529,7 +1612,7 @@ for (var i2 = 3; i2 >= 0; i2--) {
 		}],
 		timeToAnswer: Math.random() * 2000 + 3000,
 		timeBetweenQuestions: 3000 + Math.floor(Math.random() * 2000),
-		startsAt: Date.now() + 118 * 1000 + Math.random() * 2000 + 200
+		startsAt: Date.now() + 8 * 1000 + Math.random() * 2000 + 200
 	});
 	addServerToCyArray(tid);
 	tids.push(tid);
@@ -1538,7 +1621,8 @@ for (var i2 = 3; i2 >= 0; i2--) {
 	var limit = 4 + Math.floor(Math.random() * 8);
 	for (i = limit; i >= 0; i--) {
 		var u = new DomElementUser(cytoController, tid);
-		var registrationResult = controller.userJoined(tid, u);
+		var userName = randomUserName();
+		var registrationResult = controller.userJoined(userName, tid, u);
 		if (registrationResult.success) {
 			var html = "<div class='userel' id='user_" + registrationResult.uid + "'><h4 style='text-align: center;'>" + registrationResult.uid + "</h4><div class='answerLight'></div>";
 			html += buildAnswerView(registrationResult.uid);
@@ -1606,6 +1690,16 @@ setTimeout(function () {
 	showLaunchingText();
 }, 118 * 1000);
 
+function randomUserName() {
+	var CHARS = 'abcdefghijklmnopqrstu';
+	var l = CHARS.length;
+	var name = '';
+	for (var i = 4; i >= 0; i--) {
+		name += CHARS[Math.floor(Math.random() * l)];
+	};
+	return name;
+}
+
 function showLaunchingText() {
 	var html = "<h2 id='launch'>Launching servers...</h2>";
 	jquery('body').append(html);
@@ -1639,7 +1733,7 @@ setTimeout(function () {}, 500);
 
 var info = controller.getTournamentStatusInfo(tid);
 
-},{"../domain/dynamicComponents/StandingsMerger":8,"../domain/staticComponents/tournamentRefsTable":17,"./controller":1,"./dynamicComponents/Question":2,"./dynamicComponents/QuestionVault":3,"./dynamicComponents/RoundResults":4,"./dynamicComponents/Scorer":5,"./dynamicComponents/Standings":7,"./dynamicComponents/fakes/ConsoleLogger":11,"./dynamicComponents/fakes/DomElementUser":12,"./dynamicComponents/fakes/VisualLogging":14,"./msgSink":16,"./staticComponents/userIDsToUsers":18,"cytoscape":19,"jquery":20}],16:[function(require,module,exports){
+},{"../domain/dynamicComponents/StandingsMerger":8,"../domain/staticComponents/tournamentRefsTable":17,"./controller":1,"./dynamicComponents/Question":2,"./dynamicComponents/QuestionVault":3,"./dynamicComponents/RoundResults":4,"./dynamicComponents/Scorer":5,"./dynamicComponents/Standings":7,"./dynamicComponents/fakes/ConsoleLogger":11,"./dynamicComponents/fakes/DomElementUser":12,"./dynamicComponents/fakes/VisualLogging":14,"./msgSink":16,"./staticComponents/userIDsToUsers":18,"cytoscape":20,"jquery":22}],16:[function(require,module,exports){
 // Note - can not require controller because that would be circular hell
 //var idsToUsers = require('./staticComponents/userIDsToUsers');
 
@@ -1705,7 +1799,7 @@ module.exports = {
 	}
 };
 
-},{"../dynamicComponents/Tournament":9,"lodash":21}],18:[function(require,module,exports){
+},{"../dynamicComponents/Tournament":9,"lodash":23}],18:[function(require,module,exports){
 var User = require('../dynamicComponents/User');
 
 var usersTable = {};
@@ -1744,6 +1838,48 @@ module.exports = {
 };
 
 },{"../dynamicComponents/User":10}],19:[function(require,module,exports){
+
+var namesToIDs = {};
+var IDsToNames = {};
+
+module.exports = {
+
+	checkNameAvailability: function (name) {
+		return namesToIDs.hasOwnProperty(name) === false;
+	},
+	registerName: function (name, uid) {
+		namesToIDs[name] = uid;
+		IDsToNames[uid] = name;
+	},
+	getNameByID: function (uid) {
+		return IDsToNames[uid];
+	},
+	getIDByName: function (name) {
+		return namesToIDs[name];
+	},
+	removeNameID: function (name, uid) {
+		var nameRemoved = false;
+		var IDRemoved = false;
+		if (namesToIDs.hasOwnProperty(name)) {
+			delete namesToIDs[name];
+			nameRemoved = true;
+		}
+		if (IDsToNames.hasOwnProperty(uid)) {
+			delete IDsToNames[uid];
+			IDRemoved = true;
+		}
+
+		// check if asymmetrical deletions
+		if (nameRemoved !== IDRemoved) {
+			// Something fishy
+			console.error("NAME-ID REMOVAL FROM NAMES_TO_IDS_TABLE: Asymmetrical removal occurred: " + name + ", " + uid);
+		}
+		return true;
+	}
+
+};
+
+},{}],20:[function(require,module,exports){
 (function (global,__dirname){
 /*!
 Copyright (c) 2016 The Cytoscape Consortium
@@ -26310,7 +26446,88 @@ module.exports = ( typeof window === 'undefined' ? null : window );
 
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},"/node_modules/cytoscape/dist")
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
+/*!
+ * depd
+ * Copyright(c) 2015 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+'use strict'
+
+/**
+ * Module exports.
+ * @public
+ */
+
+module.exports = depd
+
+/**
+ * Create deprecate for namespace in caller.
+ */
+
+function depd(namespace) {
+  if (!namespace) {
+    throw new TypeError('argument namespace is required')
+  }
+
+  function deprecate(message) {
+    // no-op in browser
+  }
+
+  deprecate._file = undefined
+  deprecate._ignored = true
+  deprecate._namespace = namespace
+  deprecate._traced = false
+  deprecate._warned = Object.create(null)
+
+  deprecate.function = wrapfunction
+  deprecate.property = wrapproperty
+
+  return deprecate
+}
+
+/**
+ * Return a wrapped function in a deprecation message.
+ *
+ * This is a no-op version of the wrapper, which does nothing but call
+ * validation.
+ */
+
+function wrapfunction(fn, message) {
+  if (typeof fn !== 'function') {
+    throw new TypeError('argument fn must be a function')
+  }
+
+  return fn
+}
+
+/**
+ * Wrap property in a deprecation message.
+ *
+ * This is a no-op version of the wrapper, which does nothing but call
+ * validation.
+ */
+
+function wrapproperty(obj, prop, message) {
+  if (!obj || (typeof obj !== 'object' && typeof obj !== 'function')) {
+    throw new TypeError('argument obj must be object')
+  }
+
+  var descriptor = Object.getOwnPropertyDescriptor(obj, prop)
+
+  if (!descriptor) {
+    throw new TypeError('must call property on owner object')
+  }
+
+  if (!descriptor.configurable) {
+    throw new TypeError('property must be configurable')
+  }
+
+  return
+}
+
+},{}],22:[function(require,module,exports){
 /*!
  * jQuery JavaScript Library v2.2.0
  * http://jquery.com/
@@ -36143,7 +36360,7 @@ if ( !noGlobal ) {
 return jQuery;
 }));
 
-},{}],21:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -50878,4 +51095,2056 @@ return jQuery;
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],24:[function(require,module,exports){
+/*!
+ * Copyright (c) 2015 Chris O'Hara <cohara87@gmail.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+(function (name, definition) {
+    if (typeof exports !== 'undefined' && typeof module !== 'undefined') {
+        module.exports = definition();
+    } else if (typeof define === 'function' && typeof define.amd === 'object') {
+        define(definition);
+    } else if (typeof define === 'function' && typeof define.petal === 'object') {
+        define(name, [], definition);
+    } else {
+        this[name] = definition();
+    }
+})('validator', function (validator) {
+
+    'use strict';
+
+    validator = { version: '4.7.1', coerce: true };
+
+    var emailUserPart = /^[a-z\d!#\$%&'\*\+\-\/=\?\^_`{\|}~]+$/i;
+    var quotedEmailUser = /^([\s\x01-\x08\x0b\x0c\x0e-\x1f\x7f\x21\x23-\x5b\x5d-\x7e]|(\\[\x01-\x09\x0b\x0c\x0d-\x7f]))*$/i;
+
+    var emailUserUtf8Part = /^[a-z\d!#\$%&'\*\+\-\/=\?\^_`{\|}~\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]+$/i;
+    var quotedEmailUserUtf8 = /^([\s\x01-\x08\x0b\x0c\x0e-\x1f\x7f\x21\x23-\x5b\x5d-\x7e\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]|(\\[\x01-\x09\x0b\x0c\x0d-\x7f\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))*$/i;
+
+    var displayName = /^[a-z\d!#\$%&'\*\+\-\/=\?\^_`{\|}~\.\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]+[a-z\d!#\$%&'\*\+\-\/=\?\^_`{\|}~\.\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF\s]*<(.+)>$/i;
+
+    var creditCard = /^(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})$/;
+
+    var isin = /^[A-Z]{2}[0-9A-Z]{9}[0-9]$/;
+
+    var isbn10Maybe = /^(?:[0-9]{9}X|[0-9]{10})$/
+      , isbn13Maybe = /^(?:[0-9]{13})$/;
+
+    var macAddress = /^([0-9a-fA-F][0-9a-fA-F]:){5}([0-9a-fA-F][0-9a-fA-F])$/;
+
+    var ipv4Maybe = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/
+      , ipv6Block = /^[0-9A-F]{1,4}$/i;
+
+    var uuid = {
+        '3': /^[0-9A-F]{8}-[0-9A-F]{4}-3[0-9A-F]{3}-[0-9A-F]{4}-[0-9A-F]{12}$/i
+      , '4': /^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i
+      , '5': /^[0-9A-F]{8}-[0-9A-F]{4}-5[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i
+      , all: /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i
+    };
+
+    var alpha = {
+        'en-US': /^[A-Z]+$/i,
+        'de-DE': /^[A-ZÄÖÜß]+$/i,
+      }
+      , alphanumeric = {
+        'en-US': /^[0-9A-Z]+$/i,
+        'de-DE': /^[0-9A-ZÄÖÜß]+$/i
+      }
+      , numeric = /^[-+]?[0-9]+$/
+      , int = /^(?:[-+]?(?:0|[1-9][0-9]*))$/
+      , float = /^(?:[-+]?(?:[0-9]+))?(?:\.[0-9]*)?(?:[eE][\+\-]?(?:[0-9]+))?$/
+      , hexadecimal = /^[0-9A-F]+$/i
+      , decimal = /^[-+]?([0-9]+|\.[0-9]+|[0-9]+\.[0-9]+)$/
+      , hexcolor = /^#?([0-9A-F]{3}|[0-9A-F]{6})$/i;
+
+    var ascii = /^[\x00-\x7F]+$/
+      , multibyte = /[^\x00-\x7F]/
+      , fullWidth = /[^\u0020-\u007E\uFF61-\uFF9F\uFFA0-\uFFDC\uFFE8-\uFFEE0-9a-zA-Z]/
+      , halfWidth = /[\u0020-\u007E\uFF61-\uFF9F\uFFA0-\uFFDC\uFFE8-\uFFEE0-9a-zA-Z]/;
+
+    var surrogatePair = /[\uD800-\uDBFF][\uDC00-\uDFFF]/;
+
+    var base64 = /^(?:[A-Z0-9+\/]{4})*(?:[A-Z0-9+\/]{2}==|[A-Z0-9+\/]{3}=|[A-Z0-9+\/]{4})$/i;
+
+    var phones = {
+      'zh-CN': /^(\+?0?86\-?)?((13\d|14[57]|15[^4,\D]|17[678]|18\d)\d{8}|170[059]\d{7})$/,
+      'zh-TW': /^(\+?886\-?|0)?9\d{8}$/,
+      'en-ZA': /^(\+?27|0)\d{9}$/,
+      'en-AU': /^(\+?61|0)4\d{8}$/,
+      'en-HK': /^(\+?852\-?)?[569]\d{3}\-?\d{4}$/,
+      'fr-FR': /^(\+?33|0)[67]\d{8}$/,
+      'pt-PT': /^(\+?351)?9[1236]\d{7}$/,
+      'el-GR': /^(\+?30)?(69\d{8})$/,
+      'en-GB': /^(\+?44|0)7\d{9}$/,
+      'en-US': /^(\+?1)?[2-9]\d{2}[2-9](?!11)\d{6}$/,
+      'en-ZM': /^(\+?26)?09[567]\d{7}$/,
+      'ru-RU': /^(\+?7|8)?9\d{9}$/,
+      'nb-NO': /^(\+?47)?[49]\d{7}$/,
+      'nn-NO': /^(\+?47)?[49]\d{7}$/,
+      'vi-VN': /^(\+?84|0)?((1(2([0-9])|6([2-9])|88|99))|(9((?!5)[0-9])))([0-9]{7})$/,
+      'en-NZ': /^(\+?64|0)2\d{7,9}$/,
+      'en-IN': /^(\+?91|0)?[789]\d{9}$/,
+      'es-ES': /^(\+?34)?(6\d{1}|7[1234])\d{7}$/,
+      'de-DE': /^(\+?49[ \.\-])?([\(]{1}[0-9]{1,6}[\)])?([0-9 \.\-\/]{3,20})((x|ext|extension)[ ]?[0-9]{1,4})?$/,
+      'fi-FI': /^(\+?358|0)\s?(4(0|1|2|4|5)?|50)\s?(\d\s?){4,8}\d$/
+    };
+
+    // from http://goo.gl/0ejHHW
+    var iso8601 = /^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-2])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-3])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/;
+
+    validator.extend = function (name, fn) {
+        validator[name] = function () {
+            var args = Array.prototype.slice.call(arguments);
+            args[0] = validator.toString(args[0]);
+            return fn.apply(validator, args);
+        };
+    };
+
+    //Right before exporting the validator object, pass each of the builtins
+    //through extend() so that their first argument is coerced to a string
+    validator.init = function () {
+        for (var name in validator) {
+            if (typeof validator[name] !== 'function' || name === 'toString' ||
+                    name === 'toDate' || name === 'extend' || name === 'init') {
+                continue;
+            }
+            validator.extend(name, validator[name]);
+        }
+    };
+
+    var depd = null;
+    validator.deprecation = function (msg) {
+        if (depd === null) {
+            if (typeof require !== 'function') {
+                return;
+            }
+            depd = require('depd')('validator');
+        }
+        depd(msg);
+    };
+
+    validator.toString = function (input) {
+        if (typeof input !== 'string') {
+            // The library validates strings only. Currently it coerces all input to a string, but this
+            // will go away in an upcoming major version change. Print a deprecation notice for now
+            if (!validator.coerce) {
+                throw new Error('this library validates strings only');
+            }
+            validator.deprecation('you tried to validate a ' + typeof input + ' but this library ' +
+                    '(validator.js) validates strings only. Please update your code as this will ' +
+                    'be an error soon.');
+        }
+        if (typeof input === 'object' && input !== null) {
+            if (typeof input.toString === 'function') {
+                input = input.toString();
+            } else {
+                input = '[object Object]';
+            }
+        } else if (input === null || typeof input === 'undefined' || (isNaN(input) && !input.length)) {
+            input = '';
+        }
+        return '' + input;
+    };
+
+    validator.toDate = function (date) {
+        if (Object.prototype.toString.call(date) === '[object Date]') {
+            return date;
+        }
+        date = Date.parse(date);
+        return !isNaN(date) ? new Date(date) : null;
+    };
+
+    validator.toFloat = function (str) {
+        return parseFloat(str);
+    };
+
+    validator.toInt = function (str, radix) {
+        return parseInt(str, radix || 10);
+    };
+
+    validator.toBoolean = function (str, strict) {
+        if (strict) {
+            return str === '1' || str === 'true';
+        }
+        return str !== '0' && str !== 'false' && str !== '';
+    };
+
+    validator.equals = function (str, comparison) {
+        return str === validator.toString(comparison);
+    };
+
+    validator.contains = function (str, elem) {
+        return str.indexOf(validator.toString(elem)) >= 0;
+    };
+
+    validator.matches = function (str, pattern, modifiers) {
+        if (Object.prototype.toString.call(pattern) !== '[object RegExp]') {
+            pattern = new RegExp(pattern, modifiers);
+        }
+        return pattern.test(str);
+    };
+
+    var default_email_options = {
+        allow_display_name: false,
+        allow_utf8_local_part: true,
+        require_tld: true
+    };
+
+    validator.isEmail = function (str, options) {
+        options = merge(options, default_email_options);
+
+        if (options.allow_display_name) {
+            var display_email = str.match(displayName);
+            if (display_email) {
+                str = display_email[1];
+            }
+        }
+
+        var parts = str.split('@')
+          , domain = parts.pop()
+          , user = parts.join('@');
+
+        var lower_domain = domain.toLowerCase();
+        if (lower_domain === 'gmail.com' || lower_domain === 'googlemail.com') {
+            user = user.replace(/\./g, '').toLowerCase();
+        }
+
+        if (!validator.isByteLength(user, {max: 64}) ||
+                !validator.isByteLength(domain, {max: 256})) {
+            return false;
+        }
+
+        if (!validator.isFQDN(domain, {require_tld: options.require_tld})) {
+            return false;
+        }
+
+        if (user[0] === '"') {
+            user = user.slice(1, user.length - 1);
+            return options.allow_utf8_local_part ?
+                quotedEmailUserUtf8.test(user) :
+                quotedEmailUser.test(user);
+        }
+
+        var pattern = options.allow_utf8_local_part ?
+            emailUserUtf8Part : emailUserPart;
+
+        var user_parts = user.split('.');
+        for (var i = 0; i < user_parts.length; i++) {
+            if (!pattern.test(user_parts[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    var default_url_options = {
+        protocols: [ 'http', 'https', 'ftp' ]
+      , require_tld: true
+      , require_protocol: false
+      , require_valid_protocol: true
+      , allow_underscores: false
+      , allow_trailing_dot: false
+      , allow_protocol_relative_urls: false
+    };
+
+    validator.isURL = function (url, options) {
+        if (!url || url.length >= 2083 || /\s/.test(url)) {
+            return false;
+        }
+        if (url.indexOf('mailto:') === 0) {
+            return false;
+        }
+        options = merge(options, default_url_options);
+        var protocol, auth, host, hostname, port,
+            port_str, split;
+        split = url.split('://');
+        if (split.length > 1) {
+            protocol = split.shift();
+            if (options.require_valid_protocol && options.protocols.indexOf(protocol) === -1) {
+                return false;
+            }
+        } else if (options.require_protocol) {
+            return false;
+        }  else if (options.allow_protocol_relative_urls && url.substr(0, 2) === '//') {
+            split[0] = url.substr(2);
+        }
+        url = split.join('://');
+        split = url.split('#');
+        url = split.shift();
+
+        split = url.split('?');
+        url = split.shift();
+
+        split = url.split('/');
+        url = split.shift();
+        split = url.split('@');
+        if (split.length > 1) {
+            auth = split.shift();
+            if (auth.indexOf(':') >= 0 && auth.split(':').length > 2) {
+                return false;
+            }
+        }
+        hostname = split.join('@');
+        split = hostname.split(':');
+        host = split.shift();
+        if (split.length) {
+            port_str = split.join(':');
+            port = parseInt(port_str, 10);
+            if (!/^[0-9]+$/.test(port_str) || port <= 0 || port > 65535) {
+                return false;
+            }
+        }
+        if (!validator.isIP(host) && !validator.isFQDN(host, options) &&
+                host !== 'localhost') {
+            return false;
+        }
+        if (options.host_whitelist &&
+                options.host_whitelist.indexOf(host) === -1) {
+            return false;
+        }
+        if (options.host_blacklist &&
+                options.host_blacklist.indexOf(host) !== -1) {
+            return false;
+        }
+        return true;
+    };
+
+    validator.isMACAddress = function (str) {
+        return macAddress.test(str);
+    };
+
+    validator.isIP = function (str, version) {
+        version = version ? version + '' : '';
+        if (!version) {
+            return validator.isIP(str, 4) || validator.isIP(str, 6);
+        } else if (version === '4') {
+            if (!ipv4Maybe.test(str)) {
+                return false;
+            }
+            var parts = str.split('.').sort(function (a, b) {
+                return a - b;
+            });
+            return parts[3] <= 255;
+        } else if (version === '6') {
+            var blocks = str.split(':');
+            var foundOmissionBlock = false; // marker to indicate ::
+
+            // At least some OS accept the last 32 bits of an IPv6 address
+            // (i.e. 2 of the blocks) in IPv4 notation, and RFC 3493 says
+            // that '::ffff:a.b.c.d' is valid for IPv4-mapped IPv6 addresses,
+            // and '::a.b.c.d' is deprecated, but also valid.
+            var foundIPv4TransitionBlock = validator.isIP(blocks[blocks.length - 1], 4);
+            var expectedNumberOfBlocks = foundIPv4TransitionBlock ? 7 : 8;
+
+            if (blocks.length > expectedNumberOfBlocks)
+                return false;
+
+            // initial or final ::
+            if (str === '::') {
+                return true;
+            } else if (str.substr(0, 2) === '::') {
+                blocks.shift();
+                blocks.shift();
+                foundOmissionBlock = true;
+            } else if (str.substr(str.length - 2) === '::') {
+                blocks.pop();
+                blocks.pop();
+                foundOmissionBlock = true;
+            }
+
+            for (var i = 0; i < blocks.length; ++i) {
+                // test for a :: which can not be at the string start/end
+                // since those cases have been handled above
+                if (blocks[i] === '' && i > 0 && i < blocks.length -1) {
+                    if (foundOmissionBlock)
+                        return false; // multiple :: in address
+                    foundOmissionBlock = true;
+                } else if (foundIPv4TransitionBlock && i == blocks.length - 1) {
+                    // it has been checked before that the last
+                    // block is a valid IPv4 address
+                } else if (!ipv6Block.test(blocks[i])) {
+                    return false;
+                }
+            }
+
+            if (foundOmissionBlock) {
+                return blocks.length >= 1;
+            } else {
+                return blocks.length === expectedNumberOfBlocks;
+            }
+        }
+        return false;
+    };
+
+    var default_fqdn_options = {
+        require_tld: true
+      , allow_underscores: false
+      , allow_trailing_dot: false
+    };
+
+    validator.isFQDN = function (str, options) {
+        options = merge(options, default_fqdn_options);
+
+        /* Remove the optional trailing dot before checking validity */
+        if (options.allow_trailing_dot && str[str.length - 1] === '.') {
+            str = str.substring(0, str.length - 1);
+        }
+        var parts = str.split('.');
+        if (options.require_tld) {
+            var tld = parts.pop();
+            if (!parts.length || !/^([a-z\u00a1-\uffff]{2,}|xn[a-z0-9-]{2,})$/i.test(tld)) {
+                return false;
+            }
+        }
+        for (var part, i = 0; i < parts.length; i++) {
+            part = parts[i];
+            if (options.allow_underscores) {
+                if (part.indexOf('__') >= 0) {
+                    return false;
+                }
+                part = part.replace(/_/g, '');
+            }
+            if (!/^[a-z\u00a1-\uffff0-9-]+$/i.test(part)) {
+                return false;
+            }
+            if (/[\uff01-\uff5e]/.test(part)) {
+                // disallow full-width chars
+                return false;
+            }
+            if (part[0] === '-' || part[part.length - 1] === '-') {
+                return false;
+            }
+            if (part.indexOf('---') >= 0 && part.slice(0, 4) !== 'xn--') {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    validator.isBoolean = function(str) {
+        return (['true', 'false', '1', '0'].indexOf(str) >= 0);
+    };
+
+    validator.isAlpha = function (str, locale) {
+        locale = locale || 'en-US';
+        return alpha[locale].test(str);
+    };
+
+    validator.isAlphanumeric = function (str, locale) {
+        locale = locale || 'en-US';
+        return alphanumeric[locale].test(str);
+    };
+
+    validator.isNumeric = function (str) {
+        return numeric.test(str);
+    };
+
+    validator.isDecimal = function (str) {
+        return str !== '' && decimal.test(str);
+    };
+
+    validator.isHexadecimal = function (str) {
+        return hexadecimal.test(str);
+    };
+
+    validator.isHexColor = function (str) {
+        return hexcolor.test(str);
+    };
+
+    validator.isLowercase = function (str) {
+        return str === str.toLowerCase();
+    };
+
+    validator.isUppercase = function (str) {
+        return str === str.toUpperCase();
+    };
+
+    validator.isInt = function (str, options) {
+        options = options || {};
+        return int.test(str) && (!options.hasOwnProperty('min') || str >= options.min) && (!options.hasOwnProperty('max') || str <= options.max);
+    };
+
+    validator.isFloat = function (str, options) {
+        options = options || {};
+        if (str === '' || str === '.') {
+            return false;
+        }
+        return float.test(str) && (!options.hasOwnProperty('min') || str >= options.min) && (!options.hasOwnProperty('max') || str <= options.max);
+    };
+
+    validator.isDivisibleBy = function (str, num) {
+        return validator.toFloat(str) % parseInt(num, 10) === 0;
+    };
+
+    validator.isNull = function (str) {
+        return str.length === 0;
+    };
+
+    validator.isLength = function (str, options) {
+        var min, max;
+        if (typeof(options) === 'object') {
+            min = options.min || 0;
+            max = options.max;
+        } else { // backwards compatibility: isLength(str, min [, max])
+            min = arguments[1];
+            max = arguments[2];
+        }
+        var surrogatePairs = str.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || [];
+        var len = str.length - surrogatePairs.length;
+        return len >= min && (typeof max === 'undefined' || len <= max);
+    };
+    validator.isByteLength = function (str, options) {
+        var min, max;
+        if (typeof(options) === 'object') {
+            min = options.min || 0;
+            max = options.max;
+        } else { // backwards compatibility: isByteLength(str, min [, max])
+            min = arguments[1];
+            max = arguments[2];
+        }
+        var len = encodeURI(str).split(/%..|./).length - 1;
+        return len >= min && (typeof max === 'undefined' || len <= max);
+    };
+
+    validator.isUUID = function (str, version) {
+        var pattern = uuid[version ? version : 'all'];
+        return pattern && pattern.test(str);
+    };
+
+    function getTimezoneOffset(str) {
+        var iso8601Parts = str.match(iso8601)
+          , timezone, sign, hours, minutes;
+        if (!iso8601Parts) {
+            str = str.toLowerCase();
+            timezone = str.match(/(?:\s|gmt\s*)(-|\+)(\d{1,4})(\s|$)/);
+            if (!timezone) {
+                return str.indexOf('gmt') !== -1 ? 0 : null;
+            }
+            sign = timezone[1];
+            var offset = timezone[2];
+            if (offset.length === 3) {
+                offset = '0' + offset;
+            }
+            if (offset.length <= 2) {
+                hours = 0;
+                minutes = parseInt(offset);
+            } else {
+                hours = parseInt(offset.slice(0, 2));
+                minutes = parseInt(offset.slice(2, 4));
+            }
+        } else {
+            timezone = iso8601Parts[21];
+            if (!timezone) {
+                // if no hour/minute was provided, the date is GMT
+                return !iso8601Parts[12] ? 0 : null;
+            }
+            if (timezone === 'z' || timezone === 'Z') {
+                return 0;
+            }
+            sign = iso8601Parts[22];
+            if (timezone.indexOf(':') !== -1) {
+                hours = parseInt(iso8601Parts[23]);
+                minutes = parseInt(iso8601Parts[24]);
+            } else {
+                hours = 0;
+                minutes = parseInt(iso8601Parts[23]);
+            }
+        }
+        return (hours * 60 + minutes) * (sign === '-' ? 1 : -1);
+    }
+
+    validator.isDate = function (str) {
+        var normalizedDate = new Date(Date.parse(str));
+        if (isNaN(normalizedDate)) {
+            return false;
+        }
+
+        // normalizedDate is in the user's timezone. Apply the input
+        // timezone offset to the date so that the year and day match
+        // the input
+        var timezoneOffset = getTimezoneOffset(str);
+        if (timezoneOffset !== null) {
+            var timezoneDifference = normalizedDate.getTimezoneOffset() -
+                timezoneOffset;
+            normalizedDate = new Date(normalizedDate.getTime() +
+                60000 * timezoneDifference);
+        }
+
+        var day = String(normalizedDate.getDate());
+        var dayOrYear, dayOrYearMatches, year;
+        //check for valid double digits that could be late days
+        //check for all matches since a string like '12/23' is a valid date
+        //ignore everything with nearby colons
+        dayOrYearMatches = str.match(/(^|[^:\d])[23]\d([^:\d]|$)/g);
+        if (!dayOrYearMatches) {
+            return true;
+        }
+        dayOrYear = dayOrYearMatches.map(function(digitString) {
+            return digitString.match(/\d+/g)[0];
+        }).join('/');
+
+        year = String(normalizedDate.getFullYear()).slice(-2);
+        if (dayOrYear === day || dayOrYear === year) {
+            return true;
+        } else if ((dayOrYear === (day + '/' + year)) || (dayOrYear === (year + '/' + day))) {
+            return true;
+        }
+        return false;
+    };
+
+    validator.isAfter = function (str, date) {
+        var comparison = validator.toDate(date || new Date())
+          , original = validator.toDate(str);
+        return !!(original && comparison && original > comparison);
+    };
+
+    validator.isBefore = function (str, date) {
+        var comparison = validator.toDate(date || new Date())
+          , original = validator.toDate(str);
+        return !!(original && comparison && original < comparison);
+    };
+
+    validator.isIn = function (str, options) {
+        var i;
+        if (Object.prototype.toString.call(options) === '[object Array]') {
+            var array = [];
+            for (i in options) {
+                array[i] = validator.toString(options[i]);
+            }
+            return array.indexOf(str) >= 0;
+        } else if (typeof options === 'object') {
+            return options.hasOwnProperty(str);
+        } else if (options && typeof options.indexOf === 'function') {
+            return options.indexOf(str) >= 0;
+        }
+        return false;
+    };
+
+    validator.isWhitelisted = function (str, chars) {
+        for (var i = str.length - 1; i >= 0; i--) {
+            if (chars.indexOf(str[i]) === -1) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    validator.isCreditCard = function (str) {
+        var sanitized = str.replace(/[^0-9]+/g, '');
+        if (!creditCard.test(sanitized)) {
+            return false;
+        }
+        var sum = 0, digit, tmpNum, shouldDouble;
+        for (var i = sanitized.length - 1; i >= 0; i--) {
+            digit = sanitized.substring(i, (i + 1));
+            tmpNum = parseInt(digit, 10);
+            if (shouldDouble) {
+                tmpNum *= 2;
+                if (tmpNum >= 10) {
+                    sum += ((tmpNum % 10) + 1);
+                } else {
+                    sum += tmpNum;
+                }
+            } else {
+                sum += tmpNum;
+            }
+            shouldDouble = !shouldDouble;
+        }
+        return !!((sum % 10) === 0 ? sanitized : false);
+    };
+
+    validator.isISIN = function (str) {
+        if (!isin.test(str)) {
+            return false;
+        }
+
+        var checksumStr = str.replace(/[A-Z]/g, function(character) {
+            return parseInt(character, 36);
+        });
+
+        var sum = 0, digit, tmpNum, shouldDouble = true;
+        for (var i = checksumStr.length - 2; i >= 0; i--) {
+            digit = checksumStr.substring(i, (i + 1));
+            tmpNum = parseInt(digit, 10);
+            if (shouldDouble) {
+                tmpNum *= 2;
+                if (tmpNum >= 10) {
+                    sum += tmpNum + 1;
+                } else {
+                    sum += tmpNum;
+                }
+            } else {
+                sum += tmpNum;
+            }
+            shouldDouble = !shouldDouble;
+        }
+
+        return parseInt(str.substr(str.length - 1), 10) === (10000 - sum) % 10;
+    };
+
+    validator.isISBN = function (str, version) {
+        version = version ? version + '' : '';
+        if (!version) {
+            return validator.isISBN(str, 10) || validator.isISBN(str, 13);
+        }
+        var sanitized = str.replace(/[\s-]+/g, '')
+          , checksum = 0, i;
+        if (version === '10') {
+            if (!isbn10Maybe.test(sanitized)) {
+                return false;
+            }
+            for (i = 0; i < 9; i++) {
+                checksum += (i + 1) * sanitized.charAt(i);
+            }
+            if (sanitized.charAt(9) === 'X') {
+                checksum += 10 * 10;
+            } else {
+                checksum += 10 * sanitized.charAt(9);
+            }
+            if ((checksum % 11) === 0) {
+                return !!sanitized;
+            }
+        } else  if (version === '13') {
+            if (!isbn13Maybe.test(sanitized)) {
+                return false;
+            }
+            var factor = [ 1, 3 ];
+            for (i = 0; i < 12; i++) {
+                checksum += factor[i % 2] * sanitized.charAt(i);
+            }
+            if (sanitized.charAt(12) - ((10 - (checksum % 10)) % 10) === 0) {
+                return !!sanitized;
+            }
+        }
+        return false;
+    };
+
+    validator.isMobilePhone = function(str, locale) {
+        if (locale in phones) {
+            return phones[locale].test(str);
+        }
+        return false;
+    };
+
+    var default_currency_options = {
+        symbol: '$'
+      , require_symbol: false
+      , allow_space_after_symbol: false
+      , symbol_after_digits: false
+      , allow_negatives: true
+      , parens_for_negatives: false
+      , negative_sign_before_digits: false
+      , negative_sign_after_digits: false
+      , allow_negative_sign_placeholder: false
+      , thousands_separator: ','
+      , decimal_separator: '.'
+      , allow_space_after_digits: false
+    };
+
+    validator.isCurrency = function (str, options) {
+        options = merge(options, default_currency_options);
+
+        return currencyRegex(options).test(str);
+    };
+
+    validator.isJSON = function (str) {
+        try {
+            var obj = JSON.parse(str);
+            return !!obj && typeof obj === 'object';
+        } catch (e) {}
+        return false;
+    };
+
+    validator.isMultibyte = function (str) {
+        return multibyte.test(str);
+    };
+
+    validator.isAscii = function (str) {
+        return ascii.test(str);
+    };
+
+    validator.isFullWidth = function (str) {
+        return fullWidth.test(str);
+    };
+
+    validator.isHalfWidth = function (str) {
+        return halfWidth.test(str);
+    };
+
+    validator.isVariableWidth = function (str) {
+        return fullWidth.test(str) && halfWidth.test(str);
+    };
+
+    validator.isSurrogatePair = function (str) {
+        return surrogatePair.test(str);
+    };
+
+    validator.isBase64 = function (str) {
+        return base64.test(str);
+    };
+
+    validator.isMongoId = function (str) {
+        return validator.isHexadecimal(str) && str.length === 24;
+    };
+
+    validator.isISO8601 = function (str) {
+        return iso8601.test(str);
+    };
+
+    validator.ltrim = function (str, chars) {
+        var pattern = chars ? new RegExp('^[' + chars + ']+', 'g') : /^\s+/g;
+        return str.replace(pattern, '');
+    };
+
+    validator.rtrim = function (str, chars) {
+        var pattern = chars ? new RegExp('[' + chars + ']+$', 'g') : /\s+$/g;
+        return str.replace(pattern, '');
+    };
+
+    validator.trim = function (str, chars) {
+        var pattern = chars ? new RegExp('^[' + chars + ']+|[' + chars + ']+$', 'g') : /^\s+|\s+$/g;
+        return str.replace(pattern, '');
+    };
+
+    validator.escape = function (str) {
+        return (str.replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\//g, '&#x2F;')
+            .replace(/\`/g, '&#96;'));
+    };
+
+    validator.stripLow = function (str, keep_new_lines) {
+        var chars = keep_new_lines ? '\\x00-\\x09\\x0B\\x0C\\x0E-\\x1F\\x7F' : '\\x00-\\x1F\\x7F';
+        return validator.blacklist(str, chars);
+    };
+
+    validator.whitelist = function (str, chars) {
+        return str.replace(new RegExp('[^' + chars + ']+', 'g'), '');
+    };
+
+    validator.blacklist = function (str, chars) {
+        return str.replace(new RegExp('[' + chars + ']+', 'g'), '');
+    };
+
+    var default_normalize_email_options = {
+        lowercase: true,
+        remove_dots: true,
+        remove_extension: true
+    };
+
+    validator.normalizeEmail = function (email, options) {
+        options = merge(options, default_normalize_email_options);
+        if (!validator.isEmail(email)) {
+            return false;
+        }
+        var parts = email.split('@', 2);
+        parts[1] = parts[1].toLowerCase();
+        if (parts[1] === 'gmail.com' || parts[1] === 'googlemail.com') {
+            if (options.remove_extension) {
+                parts[0] = parts[0].split('+')[0];
+            }
+            if (options.remove_dots) {
+                parts[0] = parts[0].replace(/\./g, '');
+            }
+            if (!parts[0].length) {
+                return false;
+            }
+            parts[0] = parts[0].toLowerCase();
+            parts[1] = 'gmail.com';
+        } else if (options.lowercase) {
+            parts[0] = parts[0].toLowerCase();
+        }
+        return parts.join('@');
+    };
+
+    function merge(obj, defaults) {
+        obj = obj || {};
+        for (var key in defaults) {
+            if (typeof obj[key] === 'undefined') {
+                obj[key] = defaults[key];
+            }
+        }
+        return obj;
+    }
+
+    function currencyRegex(options) {
+        var symbol = '(\\' + options.symbol.replace(/\./g, '\\.') + ')' + (options.require_symbol ? '' : '?')
+            , negative = '-?'
+            , whole_dollar_amount_without_sep = '[1-9]\\d*'
+            , whole_dollar_amount_with_sep = '[1-9]\\d{0,2}(\\' + options.thousands_separator + '\\d{3})*'
+            , valid_whole_dollar_amounts = ['0', whole_dollar_amount_without_sep, whole_dollar_amount_with_sep]
+            , whole_dollar_amount = '(' + valid_whole_dollar_amounts.join('|') + ')?'
+            , decimal_amount = '(\\' + options.decimal_separator + '\\d{2})?';
+        var pattern = whole_dollar_amount + decimal_amount;
+        // default is negative sign before symbol, but there are two other options (besides parens)
+        if (options.allow_negatives && !options.parens_for_negatives) {
+            if (options.negative_sign_after_digits) {
+                pattern += negative;
+            }
+            else if (options.negative_sign_before_digits) {
+                pattern = negative + pattern;
+            }
+        }
+        // South African Rand, for example, uses R 123 (space) and R-123 (no space)
+        if (options.allow_negative_sign_placeholder) {
+            pattern = '( (?!\\-))?' + pattern;
+        }
+        else if (options.allow_space_after_symbol) {
+            pattern = ' ?' + pattern;
+        }
+        else if (options.allow_space_after_digits) {
+            pattern += '( (?!$))?';
+        }
+        if (options.symbol_after_digits) {
+            pattern += symbol;
+        } else {
+            pattern = symbol + pattern;
+        }
+        if (options.allow_negatives) {
+            if (options.parens_for_negatives) {
+                pattern = '(\\(' + pattern + '\\)|' + pattern + ')';
+            }
+            else if (!(options.negative_sign_before_digits || options.negative_sign_after_digits)) {
+                pattern = negative + pattern;
+            }
+        }
+        return new RegExp(
+            '^' +
+            // ensure there's a dollar and/or decimal amount, and that it doesn't start with a space or a negative sign followed by a space
+            '(?!-? )(?=.*\\d)' +
+            pattern +
+            '$'
+        );
+    }
+
+    validator.init();
+
+    return validator;
+
+});
+
+},{"depd":21}],25:[function(require,module,exports){
+/*
+Copyright (c) 2015, Yahoo! Inc. All rights reserved.
+Copyrights licensed under the New BSD License.
+See the accompanying LICENSE file for terms.
+
+Authors: Nera Liu <neraliu@yahoo-inc.com>
+         Adonis Fung <adon@yahoo-inc.com>
+         Albert Yu <albertyu@yahoo-inc.com>
+*/
+/*jshint node: true */
+
+exports._getPrivFilters = function () {
+
+    var LT     = /</g,
+        QUOT   = /"/g,
+        SQUOT  = /'/g,
+        AMP    = /&/g,
+        NULL   = /\x00/g,
+        SPECIAL_ATTR_VALUE_UNQUOTED_CHARS = /(?:^$|[\x00\x09-\x0D "'`=<>])/g,
+        SPECIAL_HTML_CHARS = /[&<>"'`]/g, 
+        SPECIAL_COMMENT_CHARS = /(?:\x00|^-*!?>|--!?>|--?!?$|\]>|\]$)/g;
+
+    // CSS sensitive chars: ()"'/,!*@{}:;
+    // By CSS: (Tab|NewLine|colon|semi|lpar|rpar|apos|sol|comma|excl|ast|midast);|(quot|QUOT)
+    // By URI_PROTOCOL: (Tab|NewLine);
+    var SENSITIVE_HTML_ENTITIES = /&(?:#([xX][0-9A-Fa-f]+|\d+);?|(Tab|NewLine|colon|semi|lpar|rpar|apos|sol|comma|excl|ast|midast|ensp|emsp|thinsp);|(nbsp|amp|AMP|lt|LT|gt|GT|quot|QUOT);?)/g,
+        SENSITIVE_NAMED_REF_MAP = {Tab: '\t', NewLine: '\n', colon: ':', semi: ';', lpar: '(', rpar: ')', apos: '\'', sol: '/', comma: ',', excl: '!', ast: '*', midast: '*', ensp: '\u2002', emsp: '\u2003', thinsp: '\u2009', nbsp: '\xA0', amp: '&', lt: '<', gt: '>', quot: '"', QUOT: '"'};
+
+    // var CSS_VALID_VALUE = 
+    //     /^(?:
+    //     (?!-*expression)#?[-\w]+
+    //     |[+-]?(?:\d+|\d*\.\d+)(?:em|ex|ch|rem|px|mm|cm|in|pt|pc|%|vh|vw|vmin|vmax)?
+    //     |!important
+    //     | //empty
+    //     )$/i;
+    var CSS_VALID_VALUE = /^(?:(?!-*expression)#?[-\w]+|[+-]?(?:\d+|\d*\.\d+)(?:r?em|ex|ch|cm|mm|in|px|pt|pc|%|vh|vw|vmin|vmax)?|!important|)$/i,
+        // TODO: prevent double css escaping by not encoding \ again, but this may require CSS decoding
+        // \x7F and \x01-\x1F less \x09 are for Safari 5.0, added []{}/* for unbalanced quote
+        CSS_DOUBLE_QUOTED_CHARS = /[\x00-\x1F\x7F\[\]{}\\"]/g,
+        CSS_SINGLE_QUOTED_CHARS = /[\x00-\x1F\x7F\[\]{}\\']/g,
+        // (, \u207D and \u208D can be used in background: 'url(...)' in IE, assumed all \ chars are encoded by QUOTED_CHARS, and null is already replaced with \uFFFD
+        // otherwise, use this CSS_BLACKLIST instead (enhance it with url matching): /(?:\\?\(|[\u207D\u208D]|\\0{0,4}28 ?|\\0{0,2}20[78][Dd] ?)+/g
+        CSS_BLACKLIST = /url[\(\u207D\u208D]+/g,
+        // this assumes encodeURI() and encodeURIComponent() has escaped 1-32, 127 for IE8
+        CSS_UNQUOTED_URL = /['\(\)]/g; // " \ treated by encodeURI()
+
+    // Given a full URI, need to support "[" ( IPv6address ) "]" in URI as per RFC3986
+    // Reference: https://tools.ietf.org/html/rfc3986
+    var URL_IPV6 = /\/\/%5[Bb]([A-Fa-f0-9:]+)%5[Dd]/;
+
+
+    // Reference: http://shazzer.co.uk/database/All/characters-allowd-in-html-entities
+    // Reference: http://shazzer.co.uk/vector/Characters-allowed-after-ampersand-in-named-character-references
+    // Reference: http://shazzer.co.uk/database/All/Characters-before-javascript-uri
+    // Reference: http://shazzer.co.uk/database/All/Characters-after-javascript-uri
+    // Reference: https://html.spec.whatwg.org/multipage/syntax.html#consume-a-character-reference
+    // Reference for named characters: https://html.spec.whatwg.org/multipage/entities.json
+    var URI_BLACKLIST_PROTOCOLS = {'javascript':1, 'data':1, 'vbscript':1, 'mhtml':1, 'x-schema':1},
+        URI_PROTOCOL_COLON = /(?::|&#[xX]0*3[aA];?|&#0*58;?|&colon;)/,
+        URI_PROTOCOL_WHITESPACES = /(?:^[\x00-\x20]+|[\t\n\r\x00]+)/g,
+        URI_PROTOCOL_NAMED_REF_MAP = {Tab: '\t', NewLine: '\n'};
+
+    var x, 
+        strReplace = function (s, regexp, callback) {
+            return s === undefined ? 'undefined'
+                    : s === null            ? 'null'
+                    : s.toString().replace(regexp, callback);
+        },
+        fromCodePoint = String.fromCodePoint || function(codePoint) {
+            if (arguments.length === 0) {
+                return '';
+            }
+            if (codePoint <= 0xFFFF) { // BMP code point
+                return String.fromCharCode(codePoint);
+            }
+
+            // Astral code point; split in surrogate halves
+            // http://mathiasbynens.be/notes/javascript-encoding#surrogate-formulae
+            codePoint -= 0x10000;
+            return String.fromCharCode((codePoint >> 10) + 0xD800, (codePoint % 0x400) + 0xDC00);
+        };
+
+
+    function getProtocol(s) {
+        s = s.split(URI_PROTOCOL_COLON, 2);
+        return (s.length === 2 && s[0]) ? s[0] : null;
+    }
+
+    function htmlDecode(s, namedRefMap, reNamedRef, skipReplacement) {
+        
+        namedRefMap = namedRefMap || SENSITIVE_NAMED_REF_MAP;
+        reNamedRef = reNamedRef || SENSITIVE_HTML_ENTITIES;
+
+        function regExpFunction(m, num, named, named1) {
+            if (num) {
+                num = Number(num[0] <= '9' ? num : '0' + num);
+                // switch(num) {
+                //     case 0x80: return '\u20AC';  // EURO SIGN (€)
+                //     case 0x82: return '\u201A';  // SINGLE LOW-9 QUOTATION MARK (‚)
+                //     case 0x83: return '\u0192';  // LATIN SMALL LETTER F WITH HOOK (ƒ)
+                //     case 0x84: return '\u201E';  // DOUBLE LOW-9 QUOTATION MARK („)
+                //     case 0x85: return '\u2026';  // HORIZONTAL ELLIPSIS (…)
+                //     case 0x86: return '\u2020';  // DAGGER (†)
+                //     case 0x87: return '\u2021';  // DOUBLE DAGGER (‡)
+                //     case 0x88: return '\u02C6';  // MODIFIER LETTER CIRCUMFLEX ACCENT (ˆ)
+                //     case 0x89: return '\u2030';  // PER MILLE SIGN (‰)
+                //     case 0x8A: return '\u0160';  // LATIN CAPITAL LETTER S WITH CARON (Š)
+                //     case 0x8B: return '\u2039';  // SINGLE LEFT-POINTING ANGLE QUOTATION MARK (‹)
+                //     case 0x8C: return '\u0152';  // LATIN CAPITAL LIGATURE OE (Œ)
+                //     case 0x8E: return '\u017D';  // LATIN CAPITAL LETTER Z WITH CARON (Ž)
+                //     case 0x91: return '\u2018';  // LEFT SINGLE QUOTATION MARK (‘)
+                //     case 0x92: return '\u2019';  // RIGHT SINGLE QUOTATION MARK (’)
+                //     case 0x93: return '\u201C';  // LEFT DOUBLE QUOTATION MARK (“)
+                //     case 0x94: return '\u201D';  // RIGHT DOUBLE QUOTATION MARK (”)
+                //     case 0x95: return '\u2022';  // BULLET (•)
+                //     case 0x96: return '\u2013';  // EN DASH (–)
+                //     case 0x97: return '\u2014';  // EM DASH (—)
+                //     case 0x98: return '\u02DC';  // SMALL TILDE (˜)
+                //     case 0x99: return '\u2122';  // TRADE MARK SIGN (™)
+                //     case 0x9A: return '\u0161';  // LATIN SMALL LETTER S WITH CARON (š)
+                //     case 0x9B: return '\u203A';  // SINGLE RIGHT-POINTING ANGLE QUOTATION MARK (›)
+                //     case 0x9C: return '\u0153';  // LATIN SMALL LIGATURE OE (œ)
+                //     case 0x9E: return '\u017E';  // LATIN SMALL LETTER Z WITH CARON (ž)
+                //     case 0x9F: return '\u0178';  // LATIN CAPITAL LETTER Y WITH DIAERESIS (Ÿ)
+                // }
+                // // num >= 0xD800 && num <= 0xDFFF, and 0x0D is separately handled, as it doesn't fall into the range of x.pec()
+                // return (num >= 0xD800 && num <= 0xDFFF) || num === 0x0D ? '\uFFFD' : x.frCoPt(num);
+
+                return skipReplacement ? fromCodePoint(num)
+                        : num === 0x80 ? '\u20AC'  // EURO SIGN (€)
+                        : num === 0x82 ? '\u201A'  // SINGLE LOW-9 QUOTATION MARK (‚)
+                        : num === 0x83 ? '\u0192'  // LATIN SMALL LETTER F WITH HOOK (ƒ)
+                        : num === 0x84 ? '\u201E'  // DOUBLE LOW-9 QUOTATION MARK („)
+                        : num === 0x85 ? '\u2026'  // HORIZONTAL ELLIPSIS (…)
+                        : num === 0x86 ? '\u2020'  // DAGGER (†)
+                        : num === 0x87 ? '\u2021'  // DOUBLE DAGGER (‡)
+                        : num === 0x88 ? '\u02C6'  // MODIFIER LETTER CIRCUMFLEX ACCENT (ˆ)
+                        : num === 0x89 ? '\u2030'  // PER MILLE SIGN (‰)
+                        : num === 0x8A ? '\u0160'  // LATIN CAPITAL LETTER S WITH CARON (Š)
+                        : num === 0x8B ? '\u2039'  // SINGLE LEFT-POINTING ANGLE QUOTATION MARK (‹)
+                        : num === 0x8C ? '\u0152'  // LATIN CAPITAL LIGATURE OE (Œ)
+                        : num === 0x8E ? '\u017D'  // LATIN CAPITAL LETTER Z WITH CARON (Ž)
+                        : num === 0x91 ? '\u2018'  // LEFT SINGLE QUOTATION MARK (‘)
+                        : num === 0x92 ? '\u2019'  // RIGHT SINGLE QUOTATION MARK (’)
+                        : num === 0x93 ? '\u201C'  // LEFT DOUBLE QUOTATION MARK (“)
+                        : num === 0x94 ? '\u201D'  // RIGHT DOUBLE QUOTATION MARK (”)
+                        : num === 0x95 ? '\u2022'  // BULLET (•)
+                        : num === 0x96 ? '\u2013'  // EN DASH (–)
+                        : num === 0x97 ? '\u2014'  // EM DASH (—)
+                        : num === 0x98 ? '\u02DC'  // SMALL TILDE (˜)
+                        : num === 0x99 ? '\u2122'  // TRADE MARK SIGN (™)
+                        : num === 0x9A ? '\u0161'  // LATIN SMALL LETTER S WITH CARON (š)
+                        : num === 0x9B ? '\u203A'  // SINGLE RIGHT-POINTING ANGLE QUOTATION MARK (›)
+                        : num === 0x9C ? '\u0153'  // LATIN SMALL LIGATURE OE (œ)
+                        : num === 0x9E ? '\u017E'  // LATIN SMALL LETTER Z WITH CARON (ž)
+                        : num === 0x9F ? '\u0178'  // LATIN CAPITAL LETTER Y WITH DIAERESIS (Ÿ)
+                        : (num >= 0xD800 && num <= 0xDFFF) || num === 0x0D ? '\uFFFD'
+                        : x.frCoPt(num);
+            }
+            return namedRefMap[named || named1] || m;
+        }
+
+        return s === undefined  ? 'undefined'
+            : s === null        ? 'null'
+            : s.toString().replace(NULL, '\uFFFD').replace(reNamedRef, regExpFunction);
+    }
+
+    function cssEncode(chr) {
+        // space after \\HEX is needed by spec
+        return '\\' + chr.charCodeAt(0).toString(16).toLowerCase() + ' ';
+    }
+    function cssBlacklist(s) {
+        return s.replace(CSS_BLACKLIST, function(m){ return '-x-' + m; });
+    }
+    function cssUrl(s) {
+        // encodeURI() in yufull() will throw error for use of the CSS_UNSUPPORTED_CODE_POINT (i.e., [\uD800-\uDFFF])
+        s = x.yufull(htmlDecode(s));
+        var protocol = getProtocol(s);
+
+        // prefix ## for blacklisted protocols
+        return (protocol && URI_BLACKLIST_PROTOCOLS[protocol.toLowerCase()]) ? '##' + s : s;
+    }
+
+    return (x = {
+        // turn invalid codePoints and that of non-characters to \uFFFD, and then fromCodePoint()
+        frCoPt: function(num) {
+            return num === undefined || num === null ? '' :
+                !isFinite(num = Number(num)) || // `NaN`, `+Infinity`, or `-Infinity`
+                num <= 0 ||                     // not a valid Unicode code point
+                num > 0x10FFFF ||               // not a valid Unicode code point
+                // Math.floor(num) != num || 
+
+                (num >= 0x01 && num <= 0x08) ||
+                (num >= 0x0E && num <= 0x1F) ||
+                (num >= 0x7F && num <= 0x9F) ||
+                (num >= 0xFDD0 && num <= 0xFDEF) ||
+                
+                 num === 0x0B || 
+                (num & 0xFFFF) === 0xFFFF || 
+                (num & 0xFFFF) === 0xFFFE ? '\uFFFD' : fromCodePoint(num);
+        },
+        d: htmlDecode,
+        /*
+         * @param {string} s - An untrusted uri input
+         * @returns {string} s - null if relative url, otherwise the protocol with whitespaces stripped and lower-cased
+         */
+        yup: function(s) {
+            s = getProtocol(s.replace(NULL, ''));
+            // URI_PROTOCOL_WHITESPACES is required for left trim and remove interim whitespaces
+            return s ? htmlDecode(s, URI_PROTOCOL_NAMED_REF_MAP, null, true).replace(URI_PROTOCOL_WHITESPACES, '').toLowerCase() : null;
+        },
+
+        /*
+         * @deprecated
+         * @param {string} s - An untrusted user input
+         * @returns {string} s - The original user input with & < > " ' ` encoded respectively as &amp; &lt; &gt; &quot; &#39; and &#96;.
+         *
+         */
+        y: function(s) {
+            return strReplace(s, SPECIAL_HTML_CHARS, function (m) {
+                return m === '&' ? '&amp;'
+                    :  m === '<' ? '&lt;'
+                    :  m === '>' ? '&gt;'
+                    :  m === '"' ? '&quot;'
+                    :  m === "'" ? '&#39;'
+                    :  /*m === '`'*/ '&#96;';       // in hex: 60
+            });
+        },
+
+        // This filter is meant to introduce double-encoding, and should be used with extra care.
+        ya: function(s) {
+            return strReplace(s, AMP, '&amp;');
+        },
+
+        // FOR DETAILS, refer to inHTMLData()
+        // Reference: https://html.spec.whatwg.org/multipage/syntax.html#data-state
+        yd: function (s) {
+            return strReplace(s, LT, '&lt;');
+        },
+
+        // FOR DETAILS, refer to inHTMLComment()
+        // All NULL characters in s are first replaced with \uFFFD.
+        // If s contains -->, --!>, or starts with -*>, insert a space right before > to stop state breaking at <!--{{{yc s}}}-->
+        // If s ends with --!, --, or -, append a space to stop collaborative state breaking at {{{yc s}}}>, {{{yc s}}}!>, {{{yc s}}}-!>, {{{yc s}}}->
+        // Reference: https://html.spec.whatwg.org/multipage/syntax.html#comment-state
+        // Reference: http://shazzer.co.uk/vector/Characters-that-close-a-HTML-comment-3
+        // Reference: http://shazzer.co.uk/vector/Characters-that-close-a-HTML-comment
+        // Reference: http://shazzer.co.uk/vector/Characters-that-close-a-HTML-comment-0021
+        // If s contains ]> or ends with ], append a space after ] is verified in IE to stop IE conditional comments.
+        // Reference: http://msdn.microsoft.com/en-us/library/ms537512%28v=vs.85%29.aspx
+        // We do not care --\s>, which can possibly be intepreted as a valid close comment tag in very old browsers (e.g., firefox 3.6), as specified in the html4 spec
+        // Reference: http://www.w3.org/TR/html401/intro/sgmltut.html#h-3.2.4
+        yc: function (s) {
+            return strReplace(s, SPECIAL_COMMENT_CHARS, function(m){
+                return m === '\x00' ? '\uFFFD'
+                    : m === '--!' || m === '--' || m === '-' || m === ']' ? m + ' '
+                    :/*
+                    :  m === ']>'   ? '] >'
+                    :  m === '-->'  ? '-- >'
+                    :  m === '--!>' ? '--! >'
+                    : /-*!?>/.test(m) ? */ m.slice(0, -1) + ' >';
+            });
+        },
+
+        // FOR DETAILS, refer to inDoubleQuotedAttr()
+        // Reference: https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(double-quoted)-state
+        yavd: function (s) {
+            return strReplace(s, QUOT, '&quot;');
+        },
+
+        // FOR DETAILS, refer to inSingleQuotedAttr()
+        // Reference: https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(single-quoted)-state
+        yavs: function (s) {
+            return strReplace(s, SQUOT, '&#39;');
+        },
+
+        // FOR DETAILS, refer to inUnQuotedAttr()
+        // PART A.
+        // if s contains any state breaking chars (\t, \n, \v, \f, \r, space, and >),
+        // they are escaped and encoded into their equivalent HTML entity representations. 
+        // Reference: http://shazzer.co.uk/database/All/Characters-which-break-attributes-without-quotes
+        // Reference: https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state
+        //
+        // PART B. 
+        // if s starts with ', " or `, encode it resp. as &#39;, &quot;, or &#96; to 
+        // enforce the attr value (unquoted) state
+        // Reference: https://html.spec.whatwg.org/multipage/syntax.html#before-attribute-value-state
+        // Reference: http://shazzer.co.uk/vector/Characters-allowed-attribute-quote
+        // 
+        // PART C.
+        // Inject a \uFFFD character if an empty or all null string is encountered in 
+        // unquoted attribute value state.
+        // 
+        // Rationale 1: our belief is that developers wouldn't expect an 
+        //   empty string would result in ' name="passwd"' rendered as 
+        //   attribute value, even though this is how HTML5 is specified.
+        // Rationale 2: an empty or all null string (for IE) can 
+        //   effectively alter its immediate subsequent state, we choose
+        //   \uFFFD to end the unquoted attr 
+        //   state, which therefore will not mess up later contexts.
+        // Rationale 3: Since IE 6, it is verified that NULL chars are stripped.
+        // Reference: https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state
+        // 
+        // Example:
+        // <input value={{{yavu s}}} name="passwd"/>
+        yavu: function (s) {
+            return strReplace(s, SPECIAL_ATTR_VALUE_UNQUOTED_CHARS, function (m) {
+                return m === '\t'   ? '&#9;'  // in hex: 09
+                    :  m === '\n'   ? '&#10;' // in hex: 0A
+                    :  m === '\x0B' ? '&#11;' // in hex: 0B  for IE. IE<9 \v equals v, so use \x0B instead
+                    :  m === '\f'   ? '&#12;' // in hex: 0C
+                    :  m === '\r'   ? '&#13;' // in hex: 0D
+                    :  m === ' '    ? '&#32;' // in hex: 20
+                    :  m === '='    ? '&#61;' // in hex: 3D
+                    :  m === '<'    ? '&lt;'
+                    :  m === '>'    ? '&gt;'
+                    :  m === '"'    ? '&quot;'
+                    :  m === "'"    ? '&#39;'
+                    :  m === '`'    ? '&#96;'
+                    : /*empty or null*/ '\uFFFD';
+            });
+        },
+
+        yu: encodeURI,
+        yuc: encodeURIComponent,
+
+        // Notice that yubl MUST BE APPLIED LAST, and will not be used independently (expected output from encodeURI/encodeURIComponent and yavd/yavs/yavu)
+        // This is used to disable JS execution capabilities by prefixing x- to ^javascript:, ^vbscript: or ^data: that possibly could trigger script execution in URI attribute context
+        yubl: function (s) {
+            return URI_BLACKLIST_PROTOCOLS[x.yup(s)] ? 'x-' + s : s;
+        },
+
+        // This is NOT a security-critical filter.
+        // Reference: https://tools.ietf.org/html/rfc3986
+        yufull: function (s) {
+            return x.yu(s).replace(URL_IPV6, function(m, p) {
+                return '//[' + p + ']';
+            });
+        },
+
+        // chain yufull() with yubl()
+        yublf: function (s) {
+            return x.yubl(x.yufull(s));
+        },
+
+        // The design principle of the CSS filter MUST meet the following goal(s).
+        // (1) The input cannot break out of the context (expr) and this is to fulfill the just sufficient encoding principle.
+        // (2) The input cannot introduce CSS parsing error and this is to address the concern of UI redressing.
+        //
+        // term
+        //   : unary_operator?
+        //     [ NUMBER S* | PERCENTAGE S* | LENGTH S* | EMS S* | EXS S* | ANGLE S* |
+        //     TIME S* | FREQ S* ]
+        //   | STRING S* | IDENT S* | URI S* | hexcolor | function
+        // 
+        // Reference:
+        // * http://www.w3.org/TR/CSS21/grammar.html 
+        // * http://www.w3.org/TR/css-syntax-3/
+        // 
+        // NOTE: delimiter in CSS -  \  _  :  ;  (  )  "  '  /  ,  %  #  !  *  @  .  {  }
+        //                        2d 5c 5f 3a 3b 28 29 22 27 2f 2c 25 23 21 2a 40 2e 7b 7d
+
+        yceu: function(s) {
+            s = htmlDecode(s);
+            return CSS_VALID_VALUE.test(s) ? s : ";-x:'" + cssBlacklist(s.replace(CSS_SINGLE_QUOTED_CHARS, cssEncode)) + "';-v:";
+        },
+
+        // string1 = \"([^\n\r\f\\"]|\\{nl}|\\[^\n\r\f0-9a-f]|\\[0-9a-f]{1,6}(\r\n|[ \n\r\t\f])?)*\"
+        yced: function(s) {
+            return cssBlacklist(htmlDecode(s).replace(CSS_DOUBLE_QUOTED_CHARS, cssEncode));
+        },
+
+        // string2 = \'([^\n\r\f\\']|\\{nl}|\\[^\n\r\f0-9a-f]|\\[0-9a-f]{1,6}(\r\n|[ \n\r\t\f])?)*\'
+        yces: function(s) {
+            return cssBlacklist(htmlDecode(s).replace(CSS_SINGLE_QUOTED_CHARS, cssEncode));
+        },
+
+        // for url({{{yceuu url}}}
+        // unquoted_url = ([!#$%&*-~]|\\{h}{1,6}(\r\n|[ \t\r\n\f])?|\\[^\r\n\f0-9a-f])* (CSS 2.1 definition)
+        // unquoted_url = ([^"'()\\ \t\n\r\f\v\u0000\u0008\u000b\u000e-\u001f\u007f]|\\{h}{1,6}(\r\n|[ \t\r\n\f])?|\\[^\r\n\f0-9a-f])* (CSS 3.0 definition)
+        // The state machine in CSS 3.0 is more well defined - http://www.w3.org/TR/css-syntax-3/#consume-a-url-token0
+        // CSS_UNQUOTED_URL = /['\(\)]/g; // " \ treated by encodeURI()   
+        yceuu: function(s) {
+            return cssUrl(s).replace(CSS_UNQUOTED_URL, function (chr) {
+                return  chr === '\''        ? '\\27 ' :
+                        chr === '('         ? '%28' :
+                        /* chr === ')' ? */   '%29';
+            });
+        },
+
+        // for url("{{{yceud url}}}
+        yceud: function(s) { 
+            return cssUrl(s);
+        },
+
+        // for url('{{{yceus url}}}
+        yceus: function(s) { 
+            return cssUrl(s).replace(SQUOT, '\\27 ');
+        }
+    });
+};
+
+// exposing privFilters
+// this is an undocumented feature, and please use it with extra care
+var privFilters = exports._privFilters = exports._getPrivFilters();
+
+
+/* chaining filters */
+
+// uriInAttr and literally uriPathInAttr
+// yubl is always used 
+// Rationale: given pattern like this: <a href="{{{uriPathInDoubleQuotedAttr s}}}">
+//            developer may expect s is always prefixed with ? or /, but an attacker can abuse it with 'javascript:alert(1)'
+function uriInAttr (s, yav, yu) {
+    return privFilters.yubl(yav((yu || privFilters.yufull)(s)));
+}
+
+/** 
+* Yahoo Secure XSS Filters - just sufficient output filtering to prevent XSS!
+* @module xss-filters 
+*/
+
+/**
+* @function module:xss-filters#inHTMLData
+*
+* @param {string} s - An untrusted user input
+* @returns {string} The string s with '<' encoded as '&amp;lt;'
+*
+* @description
+* This filter is to be placed in HTML Data context to encode all '<' characters into '&amp;lt;'
+* <ul>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#data-state">HTML5 Data State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <div>{{{inHTMLData htmlData}}}</div>
+*
+*/
+exports.inHTMLData = privFilters.yd;
+
+/**
+* @function module:xss-filters#inHTMLComment
+*
+* @param {string} s - An untrusted user input
+* @returns {string} All NULL characters in s are first replaced with \uFFFD. If s contains -->, --!>, or starts with -*>, insert a space right before > to stop state breaking at <!--{{{yc s}}}-->. If s ends with --!, --, or -, append a space to stop collaborative state breaking at {{{yc s}}}>, {{{yc s}}}!>, {{{yc s}}}-!>, {{{yc s}}}->. If s contains ]> or ends with ], append a space after ] is verified in IE to stop IE conditional comments.
+*
+* @description
+* This filter is to be placed in HTML Comment context
+* <ul>
+* <li><a href="http://shazzer.co.uk/vector/Characters-that-close-a-HTML-comment-3">Shazzer - Closing comments for -.-></a>
+* <li><a href="http://shazzer.co.uk/vector/Characters-that-close-a-HTML-comment">Shazzer - Closing comments for --.></a>
+* <li><a href="http://shazzer.co.uk/vector/Characters-that-close-a-HTML-comment-0021">Shazzer - Closing comments for .></a>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-start-state">HTML5 Comment Start State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-start-dash-state">HTML5 Comment Start Dash State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-state">HTML5 Comment State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-end-dash-state">HTML5 Comment End Dash State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-end-state">HTML5 Comment End State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-end-bang-state">HTML5 Comment End Bang State</a></li>
+* <li><a href="http://msdn.microsoft.com/en-us/library/ms537512%28v=vs.85%29.aspx">Conditional Comments in Internet Explorer</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <!-- {{{inHTMLComment html_comment}}} -->
+*
+*/
+exports.inHTMLComment = privFilters.yc;
+
+/**
+* @function module:xss-filters#inSingleQuotedAttr
+*
+* @param {string} s - An untrusted user input
+* @returns {string} The string s with any single-quote characters encoded into '&amp;&#39;'.
+*
+* @description
+* <p class="warning">Warning: This is NOT designed for any onX (e.g., onclick) attributes!</p>
+* <p class="warning">Warning: If you're working on URI/components, use the more specific uri___InSingleQuotedAttr filter </p>
+* This filter is to be placed in HTML Attribute Value (single-quoted) state to encode all single-quote characters into '&amp;&#39;'
+*
+* <ul>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(single-quoted)-state">HTML5 Attribute Value (Single-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <input name='firstname' value='{{{inSingleQuotedAttr firstname}}}' />
+*
+*/
+exports.inSingleQuotedAttr = privFilters.yavs;
+
+/**
+* @function module:xss-filters#inDoubleQuotedAttr
+*
+* @param {string} s - An untrusted user input
+* @returns {string} The string s with any single-quote characters encoded into '&amp;&quot;'.
+*
+* @description
+* <p class="warning">Warning: This is NOT designed for any onX (e.g., onclick) attributes!</p>
+* <p class="warning">Warning: If you're working on URI/components, use the more specific uri___InDoubleQuotedAttr filter </p>
+* This filter is to be placed in HTML Attribute Value (double-quoted) state to encode all single-quote characters into '&amp;&quot;'
+*
+* <ul>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(double-quoted)-state">HTML5 Attribute Value (Double-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <input name="firstname" value="{{{inDoubleQuotedAttr firstname}}}" />
+*
+*/
+exports.inDoubleQuotedAttr = privFilters.yavd;
+
+/**
+* @function module:xss-filters#inUnQuotedAttr
+*
+* @param {string} s - An untrusted user input
+* @returns {string} If s contains any state breaking chars (\t, \n, \v, \f, \r, space, null, ', ", `, <, >, and =), they are escaped and encoded into their equivalent HTML entity representations. If the string is empty, inject a \uFFFD character.
+*
+* @description
+* <p class="warning">Warning: This is NOT designed for any onX (e.g., onclick) attributes!</p>
+* <p class="warning">Warning: If you're working on URI/components, use the more specific uri___InUnQuotedAttr filter </p>
+* <p>Regarding \uFFFD injection, given <a id={{{id}}} name="passwd">,<br/>
+*        Rationale 1: our belief is that developers wouldn't expect when id equals an
+*          empty string would result in ' name="passwd"' rendered as 
+*          attribute value, even though this is how HTML5 is specified.<br/>
+*        Rationale 2: an empty or all null string (for IE) can 
+*          effectively alter its immediate subsequent state, we choose
+*          \uFFFD to end the unquoted attr 
+*          state, which therefore will not mess up later contexts.<br/>
+*        Rationale 3: Since IE 6, it is verified that NULL chars are stripped.<br/>
+*        Reference: https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state</p>
+* <ul>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state">HTML5 Attribute Value (Unquoted) State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#before-attribute-value-state">HTML5 Before Attribute Value State</a></li>
+* <li><a href="http://shazzer.co.uk/database/All/Characters-which-break-attributes-without-quotes">Shazzer - Characters-which-break-attributes-without-quotes</a></li>
+* <li><a href="http://shazzer.co.uk/vector/Characters-allowed-attribute-quote">Shazzer - Characters-allowed-attribute-quote</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <input name="firstname" value={{{inUnQuotedAttr firstname}}} />
+*
+*/
+exports.inUnQuotedAttr = privFilters.yavu;
+
+
+/**
+* @function module:xss-filters#uriInSingleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly an <strong>absolute</strong> URI
+* @returns {string} The string s encoded first by window.encodeURI(), then inSingleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (single-quoted) state for an <strong>absolute</strong> URI.<br/>
+* The correct order of encoders is thus: first window.encodeURI(), then inSingleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* <p>Notice: This filter is IPv6 friendly by not encoding '[' and ']'.</p>
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(single-quoted)-state">HTML5 Attribute Value (Single-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href='{{{uriInSingleQuotedAttr full_uri}}}'>link</a>
+* 
+*/
+exports.uriInSingleQuotedAttr = function (s) {
+    return uriInAttr(s, privFilters.yavs);
+};
+
+/**
+* @function module:xss-filters#uriInDoubleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly an <strong>absolute</strong> URI
+* @returns {string} The string s encoded first by window.encodeURI(), then inDoubleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (double-quoted) state for an <strong>absolute</strong> URI.<br/>
+* The correct order of encoders is thus: first window.encodeURI(), then inDoubleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* <p>Notice: This filter is IPv6 friendly by not encoding '[' and ']'.</p>
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(double-quoted)-state">HTML5 Attribute Value (Double-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href="{{{uriInDoubleQuotedAttr full_uri}}}">link</a>
+* 
+*/
+exports.uriInDoubleQuotedAttr = function (s) {
+    return uriInAttr(s, privFilters.yavd);
+};
+
+
+/**
+* @function module:xss-filters#uriInUnQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly an <strong>absolute</strong> URI
+* @returns {string} The string s encoded first by window.encodeURI(), then inUnQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (unquoted) state for an <strong>absolute</strong> URI.<br/>
+* The correct order of encoders is thus: first the built-in encodeURI(), then inUnQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* <p>Notice: This filter is IPv6 friendly by not encoding '[' and ']'.</p>
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state">HTML5 Attribute Value (Unquoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href={{{uriInUnQuotedAttr full_uri}}}>link</a>
+* 
+*/
+exports.uriInUnQuotedAttr = function (s) {
+    return uriInAttr(s, privFilters.yavu);
+};
+
+/**
+* @function module:xss-filters#uriInHTMLData
+*
+* @param {string} s - An untrusted user input, supposedly an <strong>absolute</strong> URI
+* @returns {string} The string s encoded by window.encodeURI() and then inHTMLData()
+*
+* @description
+* This filter is to be placed in HTML Data state for an <strong>absolute</strong> URI.
+*
+* <p>Notice: The actual implementation skips inHTMLData(), since '<' is already encoded as '%3C' by encodeURI().</p>
+* <p>Notice: This filter is IPv6 friendly by not encoding '[' and ']'.</p>
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#data-state">HTML5 Data State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href="/somewhere">{{{uriInHTMLData full_uri}}}</a>
+* 
+*/
+exports.uriInHTMLData = privFilters.yufull;
+
+
+/**
+* @function module:xss-filters#uriInHTMLComment
+*
+* @param {string} s - An untrusted user input, supposedly an <strong>absolute</strong> URI
+* @returns {string} The string s encoded by window.encodeURI(), and finally inHTMLComment()
+*
+* @description
+* This filter is to be placed in HTML Comment state for an <strong>absolute</strong> URI.
+*
+* <p>Notice: This filter is IPv6 friendly by not encoding '[' and ']'.</p>
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#data-state">HTML5 Data State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-state">HTML5 Comment State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <!-- {{{uriInHTMLComment full_uri}}} -->
+* 
+*/
+exports.uriInHTMLComment = function (s) {
+    return privFilters.yc(privFilters.yufull(s));
+};
+
+
+
+
+/**
+* @function module:xss-filters#uriPathInSingleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Path/Query or relative URI
+* @returns {string} The string s encoded first by window.encodeURI(), then inSingleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (single-quoted) state for a URI Path/Query or relative URI.<br/>
+* The correct order of encoders is thus: first window.encodeURI(), then inSingleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(single-quoted)-state">HTML5 Attribute Value (Single-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href='http://example.com/{{{uriPathInSingleQuotedAttr uri_path}}}'>link</a>
+* <a href='http://example.com/?{{{uriQueryInSingleQuotedAttr uri_query}}}'>link</a>
+* 
+*/
+exports.uriPathInSingleQuotedAttr = function (s) {
+    return uriInAttr(s, privFilters.yavs, privFilters.yu);
+};
+
+/**
+* @function module:xss-filters#uriPathInDoubleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Path/Query or relative URI
+* @returns {string} The string s encoded first by window.encodeURI(), then inDoubleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (double-quoted) state for a URI Path/Query or relative URI.<br/>
+* The correct order of encoders is thus: first window.encodeURI(), then inDoubleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(double-quoted)-state">HTML5 Attribute Value (Double-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href="http://example.com/{{{uriPathInDoubleQuotedAttr uri_path}}}">link</a>
+* <a href="http://example.com/?{{{uriQueryInDoubleQuotedAttr uri_query}}}">link</a>
+* 
+*/
+exports.uriPathInDoubleQuotedAttr = function (s) {
+    return uriInAttr(s, privFilters.yavd, privFilters.yu);
+};
+
+
+/**
+* @function module:xss-filters#uriPathInUnQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Path/Query or relative URI
+* @returns {string} The string s encoded first by window.encodeURI(), then inUnQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (unquoted) state for a URI Path/Query or relative URI.<br/>
+* The correct order of encoders is thus: first the built-in encodeURI(), then inUnQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state">HTML5 Attribute Value (Unquoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href=http://example.com/{{{uriPathInUnQuotedAttr uri_path}}}>link</a>
+* <a href=http://example.com/?{{{uriQueryInUnQuotedAttr uri_query}}}>link</a>
+* 
+*/
+exports.uriPathInUnQuotedAttr = function (s) {
+    return uriInAttr(s, privFilters.yavu, privFilters.yu);
+};
+
+/**
+* @function module:xss-filters#uriPathInHTMLData
+*
+* @param {string} s - An untrusted user input, supposedly a URI Path/Query or relative URI
+* @returns {string} The string s encoded by window.encodeURI() and then inHTMLData()
+*
+* @description
+* This filter is to be placed in HTML Data state for a URI Path/Query or relative URI.
+*
+* <p>Notice: The actual implementation skips inHTMLData(), since '<' is already encoded as '%3C' by encodeURI().</p>
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#data-state">HTML5 Data State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href="http://example.com/">http://example.com/{{{uriPathInHTMLData uri_path}}}</a>
+* <a href="http://example.com/">http://example.com/?{{{uriQueryInHTMLData uri_query}}}</a>
+* 
+*/
+exports.uriPathInHTMLData = privFilters.yu;
+
+
+/**
+* @function module:xss-filters#uriPathInHTMLComment
+*
+* @param {string} s - An untrusted user input, supposedly a URI Path/Query or relative URI
+* @returns {string} The string s encoded by window.encodeURI(), and finally inHTMLComment()
+*
+* @description
+* This filter is to be placed in HTML Comment state for a URI Path/Query or relative URI.
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURI">encodeURI | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#data-state">HTML5 Data State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-state">HTML5 Comment State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <!-- http://example.com/{{{uriPathInHTMLComment uri_path}}} -->
+* <!-- http://example.com/?{{{uriQueryInHTMLComment uri_query}}} -->
+*/
+exports.uriPathInHTMLComment = function (s) {
+    return privFilters.yc(privFilters.yu(s));
+};
+
+
+/**
+* @function module:xss-filters#uriQueryInSingleQuotedAttr
+* @description This is an alias of {@link module:xss-filters#uriPathInSingleQuotedAttr}
+* 
+* @alias module:xss-filters#uriPathInSingleQuotedAttr
+*/
+exports.uriQueryInSingleQuotedAttr = exports.uriPathInSingleQuotedAttr;
+
+/**
+* @function module:xss-filters#uriQueryInDoubleQuotedAttr
+* @description This is an alias of {@link module:xss-filters#uriPathInDoubleQuotedAttr}
+* 
+* @alias module:xss-filters#uriPathInDoubleQuotedAttr
+*/
+exports.uriQueryInDoubleQuotedAttr = exports.uriPathInDoubleQuotedAttr;
+
+/**
+* @function module:xss-filters#uriQueryInUnQuotedAttr
+* @description This is an alias of {@link module:xss-filters#uriPathInUnQuotedAttr}
+* 
+* @alias module:xss-filters#uriPathInUnQuotedAttr
+*/
+exports.uriQueryInUnQuotedAttr = exports.uriPathInUnQuotedAttr;
+
+/**
+* @function module:xss-filters#uriQueryInHTMLData
+* @description This is an alias of {@link module:xss-filters#uriPathInHTMLData}
+* 
+* @alias module:xss-filters#uriPathInHTMLData
+*/
+exports.uriQueryInHTMLData = exports.uriPathInHTMLData;
+
+/**
+* @function module:xss-filters#uriQueryInHTMLComment
+* @description This is an alias of {@link module:xss-filters#uriPathInHTMLComment}
+* 
+* @alias module:xss-filters#uriPathInHTMLComment
+*/
+exports.uriQueryInHTMLComment = exports.uriPathInHTMLComment;
+
+
+
+/**
+* @function module:xss-filters#uriComponentInSingleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Component
+* @returns {string} The string s encoded first by window.encodeURIComponent(), then inSingleQuotedAttr()
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (single-quoted) state for a URI Component.<br/>
+* The correct order of encoders is thus: first window.encodeURIComponent(), then inSingleQuotedAttr()
+*
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(single-quoted)-state">HTML5 Attribute Value (Single-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href='http://example.com/?q={{{uriComponentInSingleQuotedAttr uri_component}}}'>link</a>
+* 
+*/
+exports.uriComponentInSingleQuotedAttr = function (s) {
+    return privFilters.yavs(privFilters.yuc(s));
+};
+
+/**
+* @function module:xss-filters#uriComponentInDoubleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Component
+* @returns {string} The string s encoded first by window.encodeURIComponent(), then inDoubleQuotedAttr()
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (double-quoted) state for a URI Component.<br/>
+* The correct order of encoders is thus: first window.encodeURIComponent(), then inDoubleQuotedAttr()
+*
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(double-quoted)-state">HTML5 Attribute Value (Double-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href="http://example.com/?q={{{uriComponentInDoubleQuotedAttr uri_component}}}">link</a>
+* 
+*/
+exports.uriComponentInDoubleQuotedAttr = function (s) {
+    return privFilters.yavd(privFilters.yuc(s));
+};
+
+
+/**
+* @function module:xss-filters#uriComponentInUnQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Component
+* @returns {string} The string s encoded first by window.encodeURIComponent(), then inUnQuotedAttr()
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (unquoted) state for a URI Component.<br/>
+* The correct order of encoders is thus: first the built-in encodeURIComponent(), then inUnQuotedAttr()
+*
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state">HTML5 Attribute Value (Unquoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href=http://example.com/?q={{{uriComponentInUnQuotedAttr uri_component}}}>link</a>
+* 
+*/
+exports.uriComponentInUnQuotedAttr = function (s) {
+    return privFilters.yavu(privFilters.yuc(s));
+};
+
+/**
+* @function module:xss-filters#uriComponentInHTMLData
+*
+* @param {string} s - An untrusted user input, supposedly a URI Component
+* @returns {string} The string s encoded by window.encodeURIComponent() and then inHTMLData()
+*
+* @description
+* This filter is to be placed in HTML Data state for a URI Component.
+*
+* <p>Notice: The actual implementation skips inHTMLData(), since '<' is already encoded as '%3C' by encodeURIComponent().</p>
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#data-state">HTML5 Data State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href="http://example.com/">http://example.com/?q={{{uriComponentInHTMLData uri_component}}}</a>
+* <a href="http://example.com/">http://example.com/#{{{uriComponentInHTMLData uri_fragment}}}</a>
+* 
+*/
+exports.uriComponentInHTMLData = privFilters.yuc;
+
+
+/**
+* @function module:xss-filters#uriComponentInHTMLComment
+*
+* @param {string} s - An untrusted user input, supposedly a URI Component
+* @returns {string} The string s encoded by window.encodeURIComponent(), and finally inHTMLComment()
+*
+* @description
+* This filter is to be placed in HTML Comment state for a URI Component.
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#data-state">HTML5 Data State</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#comment-state">HTML5 Comment State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <!-- http://example.com/?q={{{uriComponentInHTMLComment uri_component}}} -->
+* <!-- http://example.com/#{{{uriComponentInHTMLComment uri_fragment}}} -->
+*/
+exports.uriComponentInHTMLComment = function (s) {
+    return privFilters.yc(privFilters.yuc(s));
+};
+
+
+// uriFragmentInSingleQuotedAttr
+// added yubl on top of uriComponentInAttr 
+// Rationale: given pattern like this: <a href='{{{uriFragmentInSingleQuotedAttr s}}}'>
+//            developer may expect s is always prefixed with #, but an attacker can abuse it with 'javascript:alert(1)'
+
+/**
+* @function module:xss-filters#uriFragmentInSingleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Fragment
+* @returns {string} The string s encoded first by window.encodeURIComponent(), then inSingleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (single-quoted) state for a URI Fragment.<br/>
+* The correct order of encoders is thus: first window.encodeURIComponent(), then inSingleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(single-quoted)-state">HTML5 Attribute Value (Single-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href='http://example.com/#{{{uriFragmentInSingleQuotedAttr uri_fragment}}}'>link</a>
+* 
+*/
+exports.uriFragmentInSingleQuotedAttr = function (s) {
+    return privFilters.yubl(privFilters.yavs(privFilters.yuc(s)));
+};
+
+// uriFragmentInDoubleQuotedAttr
+// added yubl on top of uriComponentInAttr 
+// Rationale: given pattern like this: <a href="{{{uriFragmentInDoubleQuotedAttr s}}}">
+//            developer may expect s is always prefixed with #, but an attacker can abuse it with 'javascript:alert(1)'
+
+/**
+* @function module:xss-filters#uriFragmentInDoubleQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Fragment
+* @returns {string} The string s encoded first by window.encodeURIComponent(), then inDoubleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (double-quoted) state for a URI Fragment.<br/>
+* The correct order of encoders is thus: first window.encodeURIComponent(), then inDoubleQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(double-quoted)-state">HTML5 Attribute Value (Double-Quoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href="http://example.com/#{{{uriFragmentInDoubleQuotedAttr uri_fragment}}}">link</a>
+* 
+*/
+exports.uriFragmentInDoubleQuotedAttr = function (s) {
+    return privFilters.yubl(privFilters.yavd(privFilters.yuc(s)));
+};
+
+// uriFragmentInUnQuotedAttr
+// added yubl on top of uriComponentInAttr 
+// Rationale: given pattern like this: <a href={{{uriFragmentInUnQuotedAttr s}}}>
+//            developer may expect s is always prefixed with #, but an attacker can abuse it with 'javascript:alert(1)'
+
+/**
+* @function module:xss-filters#uriFragmentInUnQuotedAttr
+*
+* @param {string} s - An untrusted user input, supposedly a URI Fragment
+* @returns {string} The string s encoded first by window.encodeURIComponent(), then inUnQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* @description
+* This filter is to be placed in HTML Attribute Value (unquoted) state for a URI Fragment.<br/>
+* The correct order of encoders is thus: first the built-in encodeURIComponent(), then inUnQuotedAttr(), and finally prefix the resulted string with 'x-' if it begins with 'javascript:' or 'vbscript:' that could possibly lead to script execution
+*
+* <ul>
+* <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent">encodeURIComponent | MDN</a></li>
+* <li><a href="http://tools.ietf.org/html/rfc3986">RFC 3986</a></li>
+* <li><a href="https://html.spec.whatwg.org/multipage/syntax.html#attribute-value-(unquoted)-state">HTML5 Attribute Value (Unquoted) State</a></li>
+* </ul>
+*
+* @example
+* // output context to be applied by this filter.
+* <a href=http://example.com/#{{{uriFragmentInUnQuotedAttr uri_fragment}}}>link</a>
+* 
+*/
+exports.uriFragmentInUnQuotedAttr = function (s) {
+    return privFilters.yubl(privFilters.yavu(privFilters.yuc(s)));
+};
+
+
+/**
+* @function module:xss-filters#uriFragmentInHTMLData
+* @description This is an alias of {@link module:xss-filters#uriComponentInHTMLData}
+* 
+* @alias module:xss-filters#uriComponentInHTMLData
+*/
+exports.uriFragmentInHTMLData = exports.uriComponentInHTMLData;
+
+/**
+* @function module:xss-filters#uriFragmentInHTMLComment
+* @description This is an alias of {@link module:xss-filters#uriComponentInHTMLComment}
+* 
+* @alias module:xss-filters#uriComponentInHTMLComment
+*/
+exports.uriFragmentInHTMLComment = exports.uriComponentInHTMLComment;
+
 },{}]},{},[15]);
