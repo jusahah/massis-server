@@ -160,6 +160,10 @@ Tournament.prototype.getFinalRaport = function() {
 	// For now just return decorated statusInfo
 	var statusInfo = this.getStatusInfo();
 	statusInfo.finalStandings = this.currentStandings.finalStandings();
+	statusInfo.name = this.tournamentData.name;
+	statusInfo.description = this.tournamentData.description;
+	statusInfo.startsAt = this.tournamentData.startsAt;
+	statusInfo.originalID = this.tournamentData.id;
 
 	return statusInfo;
 }
@@ -171,6 +175,7 @@ Tournament.prototype.dataValid = function() {
 Tournament.prototype.buildQuestionVault = function(questions) {
 	this.questionVault = QuestionVault(questions);
 	var numOfQuestionsInserted = this.questionVault.getQuestionsLeft();
+	console.log("-----------QUESTIONS INSERTED------------: " + numOfQuestionsInserted);
 
 	if (numOfQuestionsInserted !== questions.length) {
 		// Some of the questions were discarded

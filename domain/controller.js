@@ -50,6 +50,7 @@ function tournamentDataSanitization(data) {
 	// For string, we do double sanitization using two different libraries
 	// Overkill? Sure.
 	var sanitizedData = {
+		id: data.id,
 		maxPlayers: data.maxPlayers,
 		name: xss.inHTMLData(validator.escape(data.name.substring(0, 128))),
 		description: xss.inHTMLData(validator.escape(data.description.substring(0, 1024))),
@@ -141,7 +142,7 @@ module.exports = {
 	// SETTERS, MODIFIERS (provide way to modify system state in realtime)
 	//
 	addTournament: function(tournamentData) {
-		alert("ADDING TOURNAE");
+
 		// Consider validation data object with Joi
 		/* OBSOLETE - decided to go with basic timestamp validation
 		// Turn tournamentData.startsAt into Date object if its timestamp
@@ -151,6 +152,8 @@ module.exports = {
 		}
 		// If its not int we trust that its a Date object already
 		*/
+		console.log(" TOURNAMENT DATA INSIDE TOURNAMENT ADDER IN CONTROLLER");
+		console.log(tournamentData)
 		var tournamentData = tournamentDataSanitization(tournamentData); // Sanitize right away
 		var tid = idsToTournaments.insertTournament(tournamentData); // Returns tournament id (that was allocated)
 		if (!tid) {

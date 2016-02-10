@@ -5,8 +5,13 @@ var SocketWrapper = require('./technical/internet/SocketWrapper');
 var userCountTracker = require('./technical/disk/UsersTracker');
 var tournamentFetcher = require('./technical/internet/tournamentFetcher');
 var queuePusher       = require('./technical/internet/queuePusher');
+var idsToUsers = require('./domain/staticComponents/userIDsToUsers');
 // Domain layer entry point
 var controller = require('./domain/controller');
+var msgSink    = require('./domain/msgSink');
+
+msgSink.setController(controller);
+msgSink.setUsersTable(idsToUsers);
 
 ////
 ////
@@ -19,8 +24,8 @@ var SOCKET_PORT = 8079; // Port socket.io is listening
 var MAX_USERS_ON_SERVER = 1000; // After this many users new sockets are denied
 var LARAVEL_KEY = 'visamestari'; // Encrypt in production
 
-var FETCHING_INTERVAL = 30 * 1000; // How often we fetch new tournaments from Laravel endpoint
-var MY_IP_ADDRESS     = // Own address to be sent to Laravel endpoint when fetching
+var FETCHING_INTERVAL = 3 * 1000; // How often we fetch new tournaments from Laravel endpoint
+var MY_IP_ADDRESS     = 'testi' // Own address to be sent to Laravel endpoint when fetching
 
 ////
 ////
@@ -42,17 +47,29 @@ console.log("INIT: Tournament fetcher");
 var fetcher = tournamentFetcher(MY_IP_ADDRESS, LARAVEL_KEY, function(tournaments) {
 	_.each(tournaments, function(t) {
 		// Pass to controller
+		// We need to transform them a bit
+		t.startsAt = t.startsAt * 1000; // To milliseconds
+
+		console.log("---- STARTS IN: " + (t.startsAt - Date.now()) + " ms");
+		_.each(t.questions, function(question) {
+			question.choices = {};
+			question.choices.a = question.a;
+			question.choices.b = question.b;
+			question.choices.c = question.c;
+			question.choices.d = question.d;
+		});
 		controller.addTournament(t);
 	});
 });
-tournamentFetcher.startFetching(FETCHING_INTERVAL);
+fetcher.startFetching(FETCHING_INTERVAL);
 ///
 
 ///
 /// Tell controller that he must tell somebody when tournaments are so done
 controller.whenTournamentDone(function(tournamentFinalInfo) {
-	console.log("Tournament done msg received in tech layer: " + tournamentFinalInfo.tid);
-	queuePusher.pushTournamentInfo(tournamentFinalInfo);
+	console.log("Tournament done msg received in tech layer: " + tournamentFinalInfo);
+	console.log(tournamentFinalInfo);
+	queuePusher.pushTournamentInfo(LARAVEL_KEY, tournamentFinalInfo);
 })
 ///
 
