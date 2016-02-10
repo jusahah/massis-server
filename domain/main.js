@@ -235,7 +235,7 @@ var userIDsToFakeUsers = {};
 // We can start playing against ourselves here
 
 // Note that JOI validation does not work on browsers
-for (var i2 = 3; i2 >= 0; i2--) {
+for (var i2 = 0; i2 >= 0; i2--) {
 	var tid = controller.addTournament({
 		maxPlayers: 13,
 		name: "Tuesday Special",
@@ -304,7 +304,7 @@ for (var i2 = 3; i2 >= 0; i2--) {
 				answer: 'd',		
 			}				
 		],
-		timeToAnswer: Math.random()*2000 + 3000,
+		timeToAnswer: Math.floor(Math.random()*2000) + 3000,
 		timeBetweenQuestions: 3000 + Math.floor(Math.random()*2000),
 		startsAt: Date.now() + 8 * 1000 + Math.random()*2000 + 200
 	});

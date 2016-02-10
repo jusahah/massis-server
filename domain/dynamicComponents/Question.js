@@ -3,7 +3,7 @@
 // var QUESTION_MAX_LENGTH = 128;
 
 // Note - you can leave this dependency out if you don't use Question.isQuestionInvalid()
-// var Joi = require('joi'); TURN ON FOR SERVER-USE
+//var Joi = require('joi'); TURN ON FOR SERVER-USE
 var Joi    = require('./fakes/FakeJoi'); 
 
 var questionSchema = Joi.object().keys({
@@ -27,12 +27,11 @@ Question.prototype.getQuestion = function() {
 */
 Question.prototype.isQuestionInvalid = function() {
 	var isInvalid   = false;
-	console.log("VALIDATIONG SINGLE QUESTION DATA");
-	console.log(this.questionData);
+	console.log("VALIDATIONG SINGLE QUESTION DATA IN QUESTION");
 	Joi.validate(this.questionData, questionSchema, function(err, value) {
 		if (err) {
 			isInvalid = err.details[0].path;
-			console.log("ERROR IN JOI: " + isInvalid);
+			console.error("ERROR QUESTION VALIDATION IN JOI: " + isInvalid);
 		}
 	});
 

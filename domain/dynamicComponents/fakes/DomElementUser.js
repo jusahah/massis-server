@@ -67,7 +67,7 @@ function DomElementUser(uid, element) {
 		var r;
 		var rankingViewArr = [];
 		for (var i = 1; i <= 5; i++) {
-			rankingViewArr.push({type: 'user', rank: i, uid: top5[i].uid, points: top5[i].points, me: i === rank});
+			rankingViewArr.push({type: 'user', rank: i, uid: top5[i].uid, name: top5[i].name,  points: top5[i].points, me: i === rank});
 		};		
 		if (rank >= 9) {
 			// Basic case, there needs to be one ... -element in between
@@ -77,7 +77,7 @@ function DomElementUser(uid, element) {
 				var spot = neighs[i];
 				if (spot) {
 					r = rank + i-2;
-					rankingViewArr.push({type: 'user', rank: r, uid: spot.uid, points: spot.points, me: r === rank});				
+					rankingViewArr.push({type: 'user', rank: r, uid: spot.uid, name: spot.name, points: spot.points, me: r === rank});				
 				}
 
 			};			
@@ -91,7 +91,7 @@ function DomElementUser(uid, element) {
 				var spot = neighs[i];
 				r = rank + i-2;
 				if (spot && r > 5) {
-					rankingViewArr.push({type: 'user', rank: r, uid: spot.uid, points: spot.points, me: r === rank});				
+					rankingViewArr.push({type: 'user', rank: r, uid: spot.uid, name: spot.name,  points: spot.points, me: r === rank});				
 				}
 
 			};				
@@ -113,7 +113,7 @@ function DomElementUser(uid, element) {
 		for (var i = 0, j = rankingsArr.length; i < j; i++) {
 			var ranking = rankingsArr[i];
 			var classLi = ranking.me ? 'me' : 'notme';
-			if (ranking.type === 'user') html += "<li class='"  + classLi + "'>" + ranking.rank + ": " + ranking.uid + " (" + ranking.points + ")</li>";
+			if (ranking.type === 'user') html += "<li class='"  + classLi + "'>" + ranking.rank + ": " + ranking.name + " (" + ranking.points + ")</li>";
 			else html += "<li>...</li>";
 		};
 		/*
@@ -151,7 +151,7 @@ function DomElementUser(uid, element) {
 			var spot = standingsView[i];
 			if (spot) {
 				var classLi = spot.uid == this.uid ? 'me' : 'notme';
-				html += "<li class='"  + classLi + "'>" + i + ": " + spot.uid + " (" + spot.points + ")</li>";				
+				html += "<li class='"  + classLi + "'>" + i + ": " + spot.name + " (" + spot.points + ")</li>";				
 			}
 
 		};
@@ -298,5 +298,5 @@ function CytoUser(cytoController, tid) {
 
 
 }
-module.exports   = CytoUser;
-//module.exports = DomElementUser;
+//module.exports   = CytoUser;
+module.exports = DomElementUser;

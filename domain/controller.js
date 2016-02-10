@@ -5,7 +5,8 @@ var userNamesToIDs   = require('./staticComponents/userNamesToIds');
 var validator        = require('validator');
 var xss              = require('xss-filters');
 
-// Straight from SO
+
+// Private helper fun, straight from SO
 function isInt(value) {
   var x;
   if (isNaN(value)) {
@@ -43,14 +44,15 @@ function isInt(value) {
 		startsAt: Date.now() + 118 * 1000 + Math.random()*2000 + 200
 }
 */
+// Private helper fun
 function tournamentDataSanitization(data) {
 	// Integers dont need sanitization, they are checked later by Joi ensuring they are ints
 	// For string, we do double sanitization using two different libraries
 	// Overkill? Sure.
 	var sanitizedData = {
 		maxPlayers: data.maxPlayers,
-		name: xss.inHTMLData(validator.escape(data.name)),
-		description: xss.inHTMLData(validator.escape(data.description)),
+		name: xss.inHTMLData(validator.escape(data.name.substring(0, 128))),
+		description: xss.inHTMLData(validator.escape(data.description.substring(0, 1024))),
 		timeToAnswer: data.timeToAnswer,
 		timeBetweenQuestions: data.timeBetweenQuestions,
 		startsAt: data.startsAt
@@ -62,12 +64,12 @@ function tournamentDataSanitization(data) {
 
 	_.each(questions, function(q) {
 		var sanitizedQuestion = {
-			question: xss.inHTMLData(validator.escape(q.question)),
+			question: xss.inHTMLData(validator.escape(q.question.substring(0, 256))),
 			choices: {
-				a: xss.inHTMLData(validator.escape(q.choices.a)).substring(0, 64),
-				b: xss.inHTMLData(validator.escape(q.choices.b)).substring(0, 64),
-				c: xss.inHTMLData(validator.escape(q.choices.c)).substring(0, 64),
-				d: xss.inHTMLData(validator.escape(q.choices.d)).substring(0, 64)
+				a: xss.inHTMLData(validator.escape(q.choices.a.substring(0, 64))),
+				b: xss.inHTMLData(validator.escape(q.choices.b.substring(0, 64))),
+				c: xss.inHTMLData(validator.escape(q.choices.c.substring(0, 64))),
+				d: xss.inHTMLData(validator.escape(q.choices.d.substring(0, 64)))
 			},
 			answer: xss.inHTMLData(validator.escape(q.answer))
 		}
@@ -83,11 +85,40 @@ function tournamentDataSanitization(data) {
 
 
 // Controller provides main facade of domain-level services!
+
+// DOMAIN-LAYER FACADE
 module.exports = {
 	test: function() {
 		return 1;
 	},
-	// API PART
+	//-------------------------------------
+	// OFFICIAL API PART
+	//-------------------------------------
+
+	//
+	// GETTERS (provide way to inspect system state in realtime)
+	//
+	getRunningTournaments: function() {
+		var tournaments = idsToTournaments.listOfTournaments(); // Currently running
+		var tournamentInfos = _.map(tournaments, function(t) {
+			return t.getInfo();
+		});
+		return tournamentInfos;
+
+	},
+	getTournamentStatusInfo: function(tid) {
+		var tournament = idsToTournaments.getTournament(tid);
+		if (!tournament) {
+			// Does not exist
+			return {success: false, reason: "Tournament does not exist - it may have ended already!"};
+		}
+		return tournament.getStatusInfo();
+
+	},
+
+	//
+	// SETTERS, MODIFIERS (provide way to modify system state in realtime)
+	//
 	addTournament: function(tournamentData) {
 		// Consider validation data object with Joi
 		/* OBSOLETE - decided to go with basic timestamp validation
@@ -110,15 +141,7 @@ module.exports = {
 		return tid;
 
 	},
-	getTournamentStatusInfo: function(tid) {
-		var tournament = idsToTournaments.getTournament(tid);
-		if (!tournament) {
-			// Does not exist
-			return {success: false, reason: "Tournament does not exist - it may have ended already!"};
-		}
-		return tournament.getStatusInfo();
 
-	},
 	// User joining into domain-layer needs him to provide tournamentID 
 	// (every user must be connected with one and only one tournament)
 	// and msgMechanism (which is socket wrapper for typical web user)

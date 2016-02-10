@@ -1,7 +1,7 @@
 // Merges Standings with RoundResults
 var Standings = require('./Standings');
 
-function buildWhenTenOrUnderUsers(uids, standings, roundResults) {
+function buildWhenTenOrUnderUsers(uids, standings, roundResults, idToNameMappings) {
 	var newPoints = [];
 
 	for (var i = uids.length - 1; i >= 0; i--) {
@@ -10,7 +10,7 @@ function buildWhenTenOrUnderUsers(uids, standings, roundResults) {
 		var cp = parseInt(standings.getUserIDToRankingPoints(uid).split("_")[1]); // Latter part is the points
 		var up = roundResults.getUserPoints(uid);
 		if (!up) up = 0; // No change in player points
-		newPoints.push({uid: uid, points: cp+up});
+		newPoints.push({uid: uid, name: idToNameMappings[uid], points: cp+up});
 	};
 
 	console.log("NEW POINTS IN BUILDER");
@@ -39,13 +39,13 @@ function buildWhenTenOrUnderUsers(uids, standings, roundResults) {
 }
 
 // Should be run on separate process/thread!
-function StandingsMerger(standings, roundResults) {
+function StandingsMerger(standings, roundResults, idToNameMappings) {
 	var uids = standings.getUsers();
 	var newPoints = [];
 
 	if (uids.length <= 10) {
 		// We use different function to build this all
-		return buildWhenTenOrUnderUsers(uids, standings, roundResults);
+		return buildWhenTenOrUnderUsers(uids, standings, roundResults, idToNameMappings);
 	}
 
 	// This is somewhat performance critical so we use optimized for-loop
@@ -54,7 +54,7 @@ function StandingsMerger(standings, roundResults) {
 		var cp = parseInt(standings.getUserIDToRankingPoints(uid).split("_")[1]); // Latter part is the points
 		var up = roundResults.getUserPoints(uid);
 		if (!up) up = 0; // No change in player points
-		newPoints.push({uid: uid, points: cp+up});
+		newPoints.push({uid: uid, name: idToNameMappings[uid], points: cp+up});
 	};
 
 	// newPoints now contains full user list with new total points for each
@@ -109,7 +109,7 @@ function StandingsMerger(standings, roundResults) {
 
 	// newPoints is now sorted
 
-	// Rankings layout: [{uid, points}, {uid, points}, ... {uid, points}]
+	// Rankings layout: [{uid, name, points}, {uid, name, points}, ... {uid, name, points}]
 	// UserIdToRanking: {uid: ranking_points, uid: ranking_points, ..., uid: ranking_points} 
 
 	return {

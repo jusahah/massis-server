@@ -17,7 +17,6 @@ function QuestionVault(questionsDataArr) {
 	}
 
 	this.init();
-
 }
 
 QuestionVault.prototype.peekNextQuestion = function() {

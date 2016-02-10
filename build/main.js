@@ -6,7 +6,7 @@ var userNamesToIDs = require('./staticComponents/userNamesToIds');
 var validator = require('validator');
 var xss = require('xss-filters');
 
-// Straight from SO
+// Private helper fun, straight from SO
 function isInt(value) {
 	var x;
 	if (isNaN(value)) {
@@ -44,14 +44,15 @@ function isInt(value) {
 		startsAt: Date.now() + 118 * 1000 + Math.random()*2000 + 200
 }
 */
+// Private helper fun
 function tournamentDataSanitization(data) {
 	// Integers dont need sanitization, they are checked later by Joi ensuring they are ints
 	// For string, we do double sanitization using two different libraries
 	// Overkill? Sure.
 	var sanitizedData = {
 		maxPlayers: data.maxPlayers,
-		name: xss.inHTMLData(validator.escape(data.name)),
-		description: xss.inHTMLData(validator.escape(data.description)),
+		name: xss.inHTMLData(validator.escape(data.name.substring(0, 128))),
+		description: xss.inHTMLData(validator.escape(data.description.substring(0, 1024))),
 		timeToAnswer: data.timeToAnswer,
 		timeBetweenQuestions: data.timeBetweenQuestions,
 		startsAt: data.startsAt
@@ -63,12 +64,12 @@ function tournamentDataSanitization(data) {
 
 	_.each(questions, function (q) {
 		var sanitizedQuestion = {
-			question: xss.inHTMLData(validator.escape(q.question)),
+			question: xss.inHTMLData(validator.escape(q.question.substring(0, 256))),
 			choices: {
-				a: xss.inHTMLData(validator.escape(q.choices.a)).substring(0, 64),
-				b: xss.inHTMLData(validator.escape(q.choices.b)).substring(0, 64),
-				c: xss.inHTMLData(validator.escape(q.choices.c)).substring(0, 64),
-				d: xss.inHTMLData(validator.escape(q.choices.d)).substring(0, 64)
+				a: xss.inHTMLData(validator.escape(q.choices.a.substring(0, 64))),
+				b: xss.inHTMLData(validator.escape(q.choices.b.substring(0, 64))),
+				c: xss.inHTMLData(validator.escape(q.choices.c.substring(0, 64))),
+				d: xss.inHTMLData(validator.escape(q.choices.d.substring(0, 64)))
 			},
 			answer: xss.inHTMLData(validator.escape(q.answer))
 		};
@@ -81,11 +82,38 @@ function tournamentDataSanitization(data) {
 }
 
 // Controller provides main facade of domain-level services!
+
+// DOMAIN-LAYER FACADE
 module.exports = {
 	test: function () {
 		return 1;
 	},
-	// API PART
+	//-------------------------------------
+	// OFFICIAL API PART
+	//-------------------------------------
+
+	//
+	// GETTERS (provide way to inspect system state in realtime)
+	//
+	getRunningTournaments: function () {
+		var tournaments = idsToTournaments.listOfTournaments(); // Currently running
+		var tournamentInfos = _.map(tournaments, function (t) {
+			return t.getInfo();
+		});
+		return tournamentInfos;
+	},
+	getTournamentStatusInfo: function (tid) {
+		var tournament = idsToTournaments.getTournament(tid);
+		if (!tournament) {
+			// Does not exist
+			return { success: false, reason: "Tournament does not exist - it may have ended already!" };
+		}
+		return tournament.getStatusInfo();
+	},
+
+	//
+	// SETTERS, MODIFIERS (provide way to modify system state in realtime)
+	//
 	addTournament: function (tournamentData) {
 		// Consider validation data object with Joi
 		/* OBSOLETE - decided to go with basic timestamp validation
@@ -107,14 +135,7 @@ module.exports = {
 
 		return tid;
 	},
-	getTournamentStatusInfo: function (tid) {
-		var tournament = idsToTournaments.getTournament(tid);
-		if (!tournament) {
-			// Does not exist
-			return { success: false, reason: "Tournament does not exist - it may have ended already!" };
-		}
-		return tournament.getStatusInfo();
-	},
+
 	// User joining into domain-layer needs him to provide tournamentID
 	// (every user must be connected with one and only one tournament)
 	// and msgMechanism (which is socket wrapper for typical web user)
@@ -184,7 +205,7 @@ module.exports = {
 // var QUESTION_MAX_LENGTH = 128;
 
 // Note - you can leave this dependency out if you don't use Question.isQuestionInvalid()
-// var Joi = require('joi'); TURN ON FOR SERVER-USE
+//var Joi = require('joi'); TURN ON FOR SERVER-USE
 var Joi = require('./fakes/FakeJoi');
 
 var questionSchema = Joi.object().keys({
@@ -207,12 +228,11 @@ Question.prototype.getQuestion = function () {
 */
 Question.prototype.isQuestionInvalid = function () {
 	var isInvalid = false;
-	console.log("VALIDATIONG SINGLE QUESTION DATA");
-	console.log(this.questionData);
+	console.log("VALIDATIONG SINGLE QUESTION DATA IN QUESTION");
 	Joi.validate(this.questionData, questionSchema, function (err, value) {
 		if (err) {
 			isInvalid = err.details[0].path;
-			console.log("ERROR IN JOI: " + isInvalid);
+			console.error("ERROR QUESTION VALIDATION IN JOI: " + isInvalid);
 		}
 	});
 
@@ -495,7 +515,7 @@ module.exports = function (userIDs, rankings, userIDToRanking, setByMerger) {
 // Merges Standings with RoundResults
 var Standings = require('./Standings');
 
-function buildWhenTenOrUnderUsers(uids, standings, roundResults) {
+function buildWhenTenOrUnderUsers(uids, standings, roundResults, idToNameMappings) {
 	var newPoints = [];
 
 	for (var i = uids.length - 1; i >= 0; i--) {
@@ -504,7 +524,7 @@ function buildWhenTenOrUnderUsers(uids, standings, roundResults) {
 		var cp = parseInt(standings.getUserIDToRankingPoints(uid).split("_")[1]); // Latter part is the points
 		var up = roundResults.getUserPoints(uid);
 		if (!up) up = 0; // No change in player points
-		newPoints.push({ uid: uid, points: cp + up });
+		newPoints.push({ uid: uid, name: idToNameMappings[uid], points: cp + up });
 	};
 
 	console.log("NEW POINTS IN BUILDER");
@@ -533,13 +553,13 @@ function buildWhenTenOrUnderUsers(uids, standings, roundResults) {
 }
 
 // Should be run on separate process/thread!
-function StandingsMerger(standings, roundResults) {
+function StandingsMerger(standings, roundResults, idToNameMappings) {
 	var uids = standings.getUsers();
 	var newPoints = [];
 
 	if (uids.length <= 10) {
 		// We use different function to build this all
-		return buildWhenTenOrUnderUsers(uids, standings, roundResults);
+		return buildWhenTenOrUnderUsers(uids, standings, roundResults, idToNameMappings);
 	}
 
 	// This is somewhat performance critical so we use optimized for-loop
@@ -548,7 +568,7 @@ function StandingsMerger(standings, roundResults) {
 		var cp = parseInt(standings.getUserIDToRankingPoints(uid).split("_")[1]); // Latter part is the points
 		var up = roundResults.getUserPoints(uid);
 		if (!up) up = 0; // No change in player points
-		newPoints.push({ uid: uid, points: cp + up });
+		newPoints.push({ uid: uid, name: idToNameMappings[uid], points: cp + up });
 	};
 
 	// newPoints now contains full user list with new total points for each
@@ -602,7 +622,7 @@ function StandingsMerger(standings, roundResults) {
 
 	// newPoints is now sorted
 
-	// Rankings layout: [{uid, points}, {uid, points}, ... {uid, points}]
+	// Rankings layout: [{uid, name, points}, {uid, name, points}, ... {uid, name, points}]
 	// UserIdToRanking: {uid: ranking_points, uid: ranking_points, ..., uid: ranking_points}
 
 	return {
@@ -625,6 +645,7 @@ var Standings = require('./Standings');
 var Scorer = require('./Scorer');
 var SingleRound = require('./SingleRound');
 var mergeFun = require('./StandingsMerger');
+var userNamesToIDs = require('../staticComponents/userNamesToIds');
 
 // Testing dep
 var VisualLogging = require('./fakes/VisualLogging');
@@ -702,6 +723,9 @@ function Tournament(data) {
 
 	this.userList = [];
 
+	this.idToNameMappings = {};
+	this.guestCounter = 1;
+
 	this.init = function () {
 		var isInvalid = false;
 		// Note - validate that tournament starting time > (Date.now() + registration_allow_constant)
@@ -747,6 +771,17 @@ Tournament.prototype.msgFromPlayer = function (uid, msg) {
 			msgSink.informUser(uid, { tag: 'answerEvaluated', data: wasCorrect });
 		}
 	}
+};
+
+Tournament.prototype.getInfo = function () {
+	return {
+		name: this.tournamentData.name,
+		description: this.tournamentData.description,
+		questionsNum: this.tournamentData.questions.length,
+		maxPlayer: this.tournamentData.maxPlayers,
+		participators: this.userList.length,
+		startsAt: this.tournamentData.startsAt
+	};
 };
 
 Tournament.prototype.getStatusInfo = function () {
@@ -851,7 +886,8 @@ Tournament.prototype.roundEnded = function () {
 Tournament.prototype.computeNewStandings = function (endedRound) {
 	// First we have to get results object of ended round
 	var rr = endedRound.getRoundResults();
-	return mergeFun(this.currentStandings, rr); // Compute new standings + standing viewa
+	// This merge is CPU-heavy when lots of players so run in separate thread
+	return mergeFun(this.currentStandings, rr, this.idToNameMappings); // Compute new standings + standing views
 };
 
 Tournament.prototype.allowsRegistration = function () {
@@ -886,6 +922,10 @@ Tournament.prototype.getStateName = function () {
 
 Tournament.prototype.registerUser = function (uid) {
 	if (!this.allowsRegistration()) return false;
+	// We need his name and need to save it to local data structure
+	var userName = userNamesToIDs.getNameByID(uid) || 'guest_' + this.guestCounter++;
+	this.idToNameMappings[uid] = userName;
+	// Name has been saved, push the uid
 	this.userList.push(uid);
 	msgSink.informUniformly(this.userList, { tag: 'registeredNum', data: this.userList.length });
 	msgSink.informUser(uid, { tag: 'stateChange', state: this.currentState.name });
@@ -910,7 +950,7 @@ module.exports = function (data) {
 	return new Tournament(data);
 };
 
-},{"../msgSink":16,"./QuestionVault":3,"./Scorer":5,"./SingleRound":6,"./Standings":7,"./StandingsMerger":8,"./fakes/FakeJoi":13,"./fakes/VisualLogging":14,"lodash":23}],10:[function(require,module,exports){
+},{"../msgSink":16,"../staticComponents/userNamesToIds":19,"./QuestionVault":3,"./Scorer":5,"./SingleRound":6,"./Standings":7,"./StandingsMerger":8,"./fakes/FakeJoi":13,"./fakes/VisualLogging":14,"lodash":23}],10:[function(require,module,exports){
 var idsToTournaments = require('../staticComponents/tournamentRefsTable');
 
 // NOTE
@@ -1065,7 +1105,7 @@ function DomElementUser(uid, element) {
 		var r;
 		var rankingViewArr = [];
 		for (var i = 1; i <= 5; i++) {
-			rankingViewArr.push({ type: 'user', rank: i, uid: top5[i].uid, points: top5[i].points, me: i === rank });
+			rankingViewArr.push({ type: 'user', rank: i, uid: top5[i].uid, name: top5[i].name, points: top5[i].points, me: i === rank });
 		};
 		if (rank >= 9) {
 			// Basic case, there needs to be one ... -element in between
@@ -1075,7 +1115,7 @@ function DomElementUser(uid, element) {
 				var spot = neighs[i];
 				if (spot) {
 					r = rank + i - 2;
-					rankingViewArr.push({ type: 'user', rank: r, uid: spot.uid, points: spot.points, me: r === rank });
+					rankingViewArr.push({ type: 'user', rank: r, uid: spot.uid, name: spot.name, points: spot.points, me: r === rank });
 				}
 			};
 		} else if (rank <= 3) {
@@ -1087,7 +1127,7 @@ function DomElementUser(uid, element) {
 					var spot = neighs[i];
 					r = rank + i - 2;
 					if (spot && r > 5) {
-						rankingViewArr.push({ type: 'user', rank: r, uid: spot.uid, points: spot.points, me: r === rank });
+						rankingViewArr.push({ type: 'user', rank: r, uid: spot.uid, name: spot.name, points: spot.points, me: r === rank });
 					}
 				};
 			}
@@ -1108,7 +1148,7 @@ function DomElementUser(uid, element) {
 		for (var i = 0, j = rankingsArr.length; i < j; i++) {
 			var ranking = rankingsArr[i];
 			var classLi = ranking.me ? 'me' : 'notme';
-			if (ranking.type === 'user') html += "<li class='" + classLi + "'>" + ranking.rank + ": " + ranking.uid + " (" + ranking.points + ")</li>";else html += "<li>...</li>";
+			if (ranking.type === 'user') html += "<li class='" + classLi + "'>" + ranking.rank + ": " + ranking.name + " (" + ranking.points + ")</li>";else html += "<li>...</li>";
 		};
 		/*
   var ul = this.element.find('.standingsUL');
@@ -1141,7 +1181,7 @@ function DomElementUser(uid, element) {
 			var spot = standingsView[i];
 			if (spot) {
 				var classLi = spot.uid == this.uid ? 'me' : 'notme';
-				html += "<li class='" + classLi + "'>" + i + ": " + spot.uid + " (" + spot.points + ")</li>";
+				html += "<li class='" + classLi + "'>" + i + ": " + spot.name + " (" + spot.points + ")</li>";
 			}
 		};
 
@@ -1250,8 +1290,8 @@ function CytoUser(cytoController, tid) {
 
 	this.tournamentEnded = function (standingsView) {};
 }
-module.exports = CytoUser;
-//module.exports = DomElementUser;
+//module.exports   = CytoUser;
+module.exports = DomElementUser;
 
 },{}],13:[function(require,module,exports){
 // Unfortunately we need this fake joi validation as real one fails to work in browsers
@@ -1550,7 +1590,7 @@ var userIDsToFakeUsers = {};
 // We can start playing against ourselves here
 
 // Note that JOI validation does not work on browsers
-for (var i2 = 3; i2 >= 0; i2--) {
+for (var i2 = 0; i2 >= 0; i2--) {
 	var tid = controller.addTournament({
 		maxPlayers: 13,
 		name: "Tuesday Special",
@@ -1610,7 +1650,7 @@ for (var i2 = 3; i2 >= 0; i2--) {
 			},
 			answer: 'd'
 		}],
-		timeToAnswer: Math.random() * 2000 + 3000,
+		timeToAnswer: Math.floor(Math.random() * 2000) + 3000,
 		timeBetweenQuestions: 3000 + Math.floor(Math.random() * 2000),
 		startsAt: Date.now() + 8 * 1000 + Math.random() * 2000 + 200
 	});

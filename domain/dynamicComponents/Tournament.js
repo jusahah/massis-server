@@ -9,6 +9,7 @@ var Standings     = require('./Standings');
 var Scorer        = require('./Scorer');
 var SingleRound   = require('./SingleRound');
 var mergeFun      = require('./StandingsMerger');
+var userNamesToIDs= require('../staticComponents/userNamesToIds');
 
 // Testing dep
 var VisualLogging = require('./fakes/VisualLogging');
@@ -88,6 +89,9 @@ function Tournament(data) {
 
 	this.userList = [];
 
+	this.idToNameMappings = {};
+	this.guestCounter = 1;
+
 	this.init = function() {
 		var isInvalid = false;
 		// Note - validate that tournament starting time > (Date.now() + registration_allow_constant)
@@ -134,6 +138,17 @@ Tournament.prototype.msgFromPlayer = function(uid, msg) {
 			var wasCorrect = resObject.wasCorrect;
 			msgSink.informUser(uid, {tag: 'answerEvaluated', data: wasCorrect});
 		}
+	}
+}
+
+Tournament.prototype.getInfo = function() {
+	return {
+		name: this.tournamentData.name,
+		description: this.tournamentData.description,
+		questionsNum: this.tournamentData.questions.length,
+		maxPlayer: this.tournamentData.maxPlayers,
+		participators: this.userList.length,
+		startsAt: this.tournamentData.startsAt
 	}
 }
 
@@ -248,7 +263,8 @@ Tournament.prototype.roundEnded = function() {
 Tournament.prototype.computeNewStandings = function(endedRound) {
 	// First we have to get results object of ended round
 	var rr = endedRound.getRoundResults();
-	return mergeFun(this.currentStandings, rr); // Compute new standings + standing viewa
+		// This merge is CPU-heavy when lots of players so run in separate thread
+	return mergeFun(this.currentStandings, rr, this.idToNameMappings); // Compute new standings + standing views
 
 
 }
@@ -285,6 +301,10 @@ Tournament.prototype.getStateName = function() {
 
 Tournament.prototype.registerUser = function(uid) {
 	if (!this.allowsRegistration()) return false;
+	// We need his name and need to save it to local data structure
+	var userName = userNamesToIDs.getNameByID(uid) || 'guest_' + this.guestCounter++; 
+	this.idToNameMappings[uid] = userName; 
+	// Name has been saved, push the uid
 	this.userList.push(uid);
 	msgSink.informUniformly(this.userList, {tag: 'registeredNum', data: this.userList.length});
 	msgSink.informUser(uid, {tag: 'stateChange', state: this.currentState.name});
