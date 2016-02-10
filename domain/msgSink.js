@@ -21,6 +21,12 @@ module.exports = {
 			user.send(msg);
 		}
 	},
+	// From layer component to another
+	msgToController: function(msg) {
+		this.controller.msgFromComponent(msg);
+
+
+	},
 	setController: function(controller) {
 		console.log("MSG SINK: Controller set!")
 		this.controller = controller;

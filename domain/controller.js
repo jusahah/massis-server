@@ -88,9 +88,30 @@ function tournamentDataSanitization(data) {
 
 // DOMAIN-LAYER FACADE
 module.exports = {
+	callbacks: {
+		tournamentDone: null
+	},
 	test: function() {
 		return 1;
 	},
+
+	// PLUG-IN PART FOR OTHER PARTS OF SYSTEM GET NOTIFICATION FROM DOMAIN
+	whenTournamentDone: function(cb) {
+		this.callbacks.tournamentDone = cb;
+	},
+
+	// --------------------------------
+	// SYSTEM INNER API
+	// --------------------------------
+	msgFromComponent: function(msg) {
+		if (msg.tag === 'tournamentDone') {
+			if (this.callbacks.tournamentDone) {
+				this.callbacks.tournamentDone(msg.data);
+			}
+		}
+	},
+
+	
 	//-------------------------------------
 	// OFFICIAL API PART
 	//-------------------------------------

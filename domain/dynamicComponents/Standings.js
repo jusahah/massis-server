@@ -25,7 +25,7 @@ Standings.prototype.init = function() {
 }
 
 Standings.prototype.finalStandings = function() {
-	return 1;
+	return this.rankings;
 }
 
 Standings.prototype.getUsers = function() {

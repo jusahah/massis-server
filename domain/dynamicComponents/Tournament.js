@@ -156,6 +156,14 @@ Tournament.prototype.getStatusInfo = function() {
 	return {currentState: this.currentState.name, startsAt: this.tournamentData.startsAt, playersIn: this.userList.length};
 }
 
+Tournament.prototype.getFinalRaport = function() {
+	// For now just return decorated statusInfo
+	var statusInfo = this.getStatusInfo();
+	statusInfo.finalStandings = this.standings.finalStandings();
+
+	return statusInfo;
+}
+
 Tournament.prototype.dataValid = function() {
 	return this.tournamentInvalid === false;
 }
@@ -223,6 +231,7 @@ Tournament.prototype.tournamentOver = function() {
 	this.visualLogger.infoMsg('Ending tournament');
 	this.changeState(new TournamentEnded(this));
 	msgSink.informUniformly(this.userList, {tag: 'tournamentEnded', data: this.standings.finalStandings()});
+	msgSink.msgToController({tag: 'tournamentDone', data: this.getFinalRaport()});
 }
 
 Tournament.prototype.roundEnded = function() {
@@ -230,6 +239,15 @@ Tournament.prototype.roundEnded = function() {
 	// Call new standings infering stuff
 	var endedRound = this.round;
 	this.visualLogger.infoMsg('End round');
+
+
+	// New standings
+	var infoO = this.computeNewStandings(endedRound); // Returns standings + standing views
+	console.warn("INFO O");
+	console.log(infoO);
+	this.currentStandings = infoO.standings; // Set new standings
+	var views = infoO.standingsViews;
+
 	if (this.questionVault.getQuestionsLeft() !== 0) {
 		// Tournament goes on
 		this.changeState(new PreparingNextQuestion(this));
@@ -240,12 +258,6 @@ Tournament.prototype.roundEnded = function() {
 		this.tournamentOver();
 	}
 
-	// While we are waiting for next round (or have ended) lets compute new standings
-	var infoO = this.computeNewStandings(endedRound); // Returns standings + standing views
-	console.warn("INFO O");
-	console.log(infoO);
-	this.currentStandings = infoO.standings; // Set new standings
-	var views = infoO.standingsViews;
 	// Next lets broadcast standing views to all players
 	// A standing view is data object telling how a particular user sees the standings list
 	// We cannot user msgSink.informUniformly() as data going to different players is different

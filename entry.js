@@ -4,6 +4,7 @@ var io = require('socket.io')();
 var SocketWrapper = require('./technical/internet/SocketWrapper');
 var userCountTracker = require('./technical/disk/UsersTracker');
 var tournamentFetcher = require('./technical/internet/tournamentFetcher');
+var queuePusher       = require('./technical/internet/queuePusher');
 // Domain layer entry point
 var controller = require('./domain/controller');
 
@@ -28,10 +29,14 @@ var MY_IP_ADDRESS     = // Own address to be sent to Laravel endpoint when fetch
 
 
 // Init deps (sync way)
+
+///
 console.log("INIT: userCountTracker");
 userCountTracker.init();
 userCountTracker.startTracking(1000*60); // Once every 1 min write users count to a file
+///
 
+///
 console.log("INIT: Tournament fetcher");
 var fetcher = tournamentFetcher(MY_IP_ADDRESS, function(tournaments) {
 	_.each(tournaments, function(t) {
@@ -40,6 +45,16 @@ var fetcher = tournamentFetcher(MY_IP_ADDRESS, function(tournaments) {
 	});
 });
 tournamentFetcher.startFetching(FETCHING_INTERVAL);
+///
+
+///
+/// Tell controller that he must tell somebody when tournaments are so done
+controller.whenTournamentDone(function(tournamentFinalInfo) {
+	console.log("Tournament done msg received in tech layer: " + tournamentFinalInfo.tid);
+	queuePusher.pushTournamentInfo(tournamentFinalInfo);
+})
+///
+
 
 // Note that disconnections are handled purely here on technical layer
 // When disconnection occurs domain-layer is informed straight through API method controller.userLeft(uid)
