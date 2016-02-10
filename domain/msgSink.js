@@ -1,5 +1,6 @@
 // Note - can not require controller because that would be circular hell
 //var idsToUsers = require('./staticComponents/userIDsToUsers');
+var _ = require('lodash');
 
 module.exports = {
 	controller: null,

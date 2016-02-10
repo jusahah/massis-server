@@ -9,6 +9,13 @@ var RoundResults = require('../domain/dynamicComponents/RoundResults');
 var Standings    = require('../domain/dynamicComponents/Standings');
 var mergerFun    = require('../domain/dynamicComponents/StandingsMerger');
 var Tournament   = require('../domain/dynamicComponents/Tournament');
+var msgSink    = require('../domain/msgSink');
+var idsToUsers = require('../domain/staticComponents/userIDsToUsers');
+
+// IMPORTANT!!!
+// These deps must be set by hand before doing anything
+msgSink.setController(controller);
+msgSink.setUsersTable(idsToUsers);
 
 describe('Dynamic components tests', function() {
 

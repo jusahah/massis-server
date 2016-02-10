@@ -1,6 +1,6 @@
 // Tool deps
 var _   = require('lodash');
-// var Joi = require('joi'); TURN ON FOR SERVER-USE
+//var Joi = require('joi'); //TURN ON FOR SERVER-USE
 var Joi    = require('./fakes/FakeJoi'); 
 
 // App deps

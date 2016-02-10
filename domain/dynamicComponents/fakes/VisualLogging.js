@@ -29,4 +29,23 @@ function VisualLogger(name) {
 	this.init();
 }
 
-module.exports = VisualLogger;
+// Do nothing, just mock
+function VisualLoggerServer(name) {
+
+	this.init = function() {
+
+	}
+
+
+	this.msgFromPlayer = function(uid, msg) {
+
+	}
+
+	this.infoMsg = function(msg) {
+
+	}
+
+	this.init();
+}
+
+module.exports = VisualLoggerServer;

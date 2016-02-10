@@ -205,7 +205,7 @@ module.exports = {
 // var QUESTION_MAX_LENGTH = 128;
 
 // Note - you can leave this dependency out if you don't use Question.isQuestionInvalid()
-//var Joi = require('joi'); TURN ON FOR SERVER-USE
+//var Joi = require('joi'); //TURN ON FOR SERVER-USE
 var Joi = require('./fakes/FakeJoi');
 
 var questionSchema = Joi.object().keys({
@@ -636,7 +636,7 @@ module.exports = StandingsMerger; // Note that this is a pure function
 },{"./Standings":7}],9:[function(require,module,exports){
 // Tool deps
 var _ = require('lodash');
-// var Joi = require('joi'); TURN ON FOR SERVER-USE
+//var Joi = require('joi'); //TURN ON FOR SERVER-USE
 var Joi = require('./fakes/FakeJoi');
 
 // App deps
@@ -1363,7 +1363,19 @@ function VisualLogger(name) {
 	this.init();
 }
 
-module.exports = VisualLogger;
+// Do nothing, just mock
+function VisualLoggerServer(name) {
+
+	this.init = function () {};
+
+	this.msgFromPlayer = function (uid, msg) {};
+
+	this.infoMsg = function (msg) {};
+
+	this.init();
+}
+
+module.exports = VisualLoggerServer;
 
 },{"jquery":22}],15:[function(require,module,exports){
 
@@ -1776,6 +1788,7 @@ var info = controller.getTournamentStatusInfo(tid);
 },{"../domain/dynamicComponents/StandingsMerger":8,"../domain/staticComponents/tournamentRefsTable":17,"./controller":1,"./dynamicComponents/Question":2,"./dynamicComponents/QuestionVault":3,"./dynamicComponents/RoundResults":4,"./dynamicComponents/Scorer":5,"./dynamicComponents/Standings":7,"./dynamicComponents/fakes/ConsoleLogger":11,"./dynamicComponents/fakes/DomElementUser":12,"./dynamicComponents/fakes/VisualLogging":14,"./msgSink":16,"./staticComponents/userIDsToUsers":18,"cytoscape":20,"jquery":22}],16:[function(require,module,exports){
 // Note - can not require controller because that would be circular hell
 //var idsToUsers = require('./staticComponents/userIDsToUsers');
+var _ = require('lodash');
 
 module.exports = {
 	controller: null,
@@ -1804,7 +1817,7 @@ module.exports = {
 	}
 };
 
-},{}],17:[function(require,module,exports){
+},{"lodash":23}],17:[function(require,module,exports){
 var Tournament = require('../dynamicComponents/Tournament');
 var _ = require('lodash');
 
