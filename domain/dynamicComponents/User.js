@@ -3,10 +3,15 @@ var idsToTournaments = require('../staticComponents/tournamentRefsTable');
 // NOTE
 // User object lives in the domain layer!
 // MsgMechanism lives in the technical layer!
-function User(id, msgMechanism, tournamentID) {
+function User(id, msgMechanism, tournamentID, disconnectCb) {
 	this.id = id;
 	this.msgMechanism = msgMechanism;
 	this.tournamentID = tournamentID;
+
+	this.disconnectCb = disconnectCb;
+
+	this.userName;
+
 	this.init = function() {
 		this.msgMechanism.setUser(this);
 		this.msgMechanism.onConnectionDown(this.msgMechanismIsDown.bind(this));
@@ -68,6 +73,7 @@ User.prototype.init = function() {
 
 User.prototype.msgMechanismIsDown = function() {
 	console.log("USER " + this.id + ": Connection down");
+	if (this.disconnectCb) this.disconnectCb(this);
 }
 User.prototype.msgMechanismIsUp = function() {
 	console.log("USER " + this.id + ": Connection up!");
