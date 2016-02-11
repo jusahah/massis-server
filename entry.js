@@ -3,6 +3,7 @@ var _ = require('lodash');
 var io = require('socket.io')();
 var SocketWrapper = require('./technical/internet/SocketWrapper');
 var userCountTracker = require('./technical/disk/UsersTracker');
+var countBroadcaster = require('./technical/internet/broadcastUserCount');
 var tournamentFetcher = require('./technical/internet/tournamentFetcher');
 var queuePusher       = require('./technical/internet/queuePusher');
 var idsToUsers = require('./domain/staticComponents/userIDsToUsers');
@@ -63,6 +64,7 @@ var fetcher = tournamentFetcher(MY_IP_ADDRESS, LARAVEL_KEY, function(tournaments
 });
 fetcher.startFetching(FETCHING_INTERVAL);
 ///
+countBroadcaster.startBroadcasting(LARAVEL_KEY, 1000*60*2); // Once every two minutes 
 
 ///
 /// Tell controller that he must tell somebody when tournaments are so done
@@ -91,29 +93,33 @@ io.on('connection', function(socket) {
 		socket.disconnect();
 		return false;
 	}
-	socket.send('provideInfo', ['tid', 'username']);
+	console.log("SOCKET CONN");
+	socket.emit('provideInfo');
+	console.log("Provide info sent!");
 	socket.on('TidAndName', function(data) {
+		console.log("TID AND NAME REC: " + data.tid + ", " + data.name);
 		var tid  = data.tid;
+		var domainTid = tidsToDomainTids[tid];
 		var name = data.name;
 		// Client has now completed initialization
 		// We contact domain layer with creation of new user
 		// First we create necessary abstractions to pass into domain
 		var sw = new SocketWrapper(socket); // Inits rest of socket listeners etc
-		var result = controller.userJoined(name, tid, sw); // Kicks off the domain-layer initialization
+		var result = controller.userJoined(name, domainTid, sw); // Kicks off the domain-layer initialization
 
 		// rif error in domain layer  -> result is {success: false, reason: 'some reason'}
 		// if all went fine in domain -> result is {success: true, uid: 123456, tid: tid}
 		if (result && result.success) {
 			// Life is good
-			socket.emit('joinedtotournament', {tid: tid});
+			socket.emit('joinedtotournament', {tid: domainTid, info: result.info});
 			// Do nothing, rest of communication is from User object towards SocketWrapper
-			console.log("User joined: " + tid + ", " + result.uid);
+			console.log("User joined: " + domainTid + ", " + result.uid);
 			// Only now we create disconnecting listener as we suddenly started caring about this client
 			createDisconnectingListener(socket, result.uid);
 			++userCountTracker.currentUserCount;
 		} else {
 			// Something failed so miserably
-			console.error('User join failed: ' + tid + ", " + result.reason);
+			console.error('User join failed: ' + domainTid + ", " + result.reason);
 			// Inform poor socket that he is a failure and will always be
 			socket.emit('youfail', {reason: result.reason});
 		}
@@ -125,5 +131,128 @@ io.on('connection', function(socket) {
 
 io.listen(SOCKET_PORT);
 
+var tidsToDomainTids = {};
+
+var domainTid;
+setTimeout(function() {
+	var tid = 2;
+
+	domainTid = controller.addTournament({
+		id: tid,
+		maxPlayers: 13,
+		name: "Tuesday Special",
+		description: "Win huge prizes, like hot air balloons. Only on tuesdays",
+		questions: [
+			{
+				question: "Capital of Algeria?",
+				choices: {
+					a: "Helsinki",
+					b: "Turku",
+					c: "Algiers",
+					d: "Porvoo"
+				},
+				answer: 'c',		
+			},
+			{
+				question: "Capital of Eritrea?",
+				choices: {
+					a: "Asmara",
+					b: "Aspiriini",
+					c: "Ankara",
+					d: "Ala-Ballah-Dalah-Bla"
+				},
+				answer: 'a',		
+			},
+			{
+				question: "Capital of Botswana?",
+				choices: {
+					a: "Gaborone",
+					b: "Gatorade",
+					c: "Pepsodent",
+					d: "Red Bull"
+				},
+				answer: 'a',		
+			}
+			
+		],
+		timeToAnswer: Math.floor(Math.random()*2000) + 3000,
+		timeBetweenQuestions: 1000 + Math.floor(Math.random()*2000),
+		startsAt: Date.now() + 10 * 1000
+	});
+
+	tidsToDomainTids[tid] = domainTid;
+
+}, 600);
 
 
+setTimeout(function() {
+
+	controller.userJoined('pekka55', domainTid, new DomElementUser2());
+
+}, 1200);
+setTimeout(function() {
+
+	controller.userJoined('pekka7755', domainTid, new DomElementUser2());
+
+}, 1400);
+
+function DomElementUser2(uid, element) {
+
+	this.receive = function(msg) {
+
+		
+	}
+	this.send = function(msg) {
+
+		
+	}
+	this.setUID = function(uid) {
+		this.uid = uid;
+	}
+	this.setElement = function(element) {
+		this.element = element;
+	}
+	this.setUser = function(user) {
+		this.user = user;
+	}
+	this.onConnectionDown = function(cb) {
+		this.downCb = cb;
+	}
+	this.onConnectionUp = function(cb) {
+		this.upCb = cb;
+	}
+	this.onMessage = function(cb) {
+		this.msgCb = cb;
+	}
+
+	this.changeState = function(toState) {
+
+
+	}
+
+	this.mergeTwoStandingsObjectsToIterableRanking = function(top5, neighs, rank) {
+
+
+	}
+
+	this.showNewStandingsNeighbours = function(standingsView) {
+
+
+	}
+
+	this.showNewStandingsAllInOne = function(standingsView) {
+
+	}
+
+	this.showAnswerEvaluated = function(wasCorrect) {
+
+	}
+
+	this.showRegisteredNum = function(num) {
+
+	}
+
+	this.tournamentEnded = function(standingsView) {
+
+	}
+}

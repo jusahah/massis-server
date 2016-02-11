@@ -96,6 +96,10 @@ module.exports = {
 		return 1;
 	},
 
+	getCurrentUserCount: function() {
+		return idsToUsers.getCount();
+	},
+
 	// PLUG-IN PART FOR OTHER PARTS OF SYSTEM GET NOTIFICATION FROM DOMAIN
 	whenTournamentDone: function(cb) {
 		this.callbacks.tournamentDone = cb;
@@ -173,6 +177,7 @@ module.exports = {
 
 	userJoined: function(userName, tournamentID, msgMechanism) {
 		// First check that tournament is available and has not started yet
+		console.log("CONTROLLER: User joined with: " + userName + ", " + tournamentID);
 		var tournament = idsToTournaments.getTournament(tournamentID);
 		if (!tournament) {
 			// Does not exist
@@ -198,11 +203,11 @@ module.exports = {
 		var uid = idsToUsers.createUser(msgMechanism, tournamentID);
 		// We could potentially check if uid is truthy and thus allow idsToUsers have max users limit on this server
 		// But naah... overkill for now
-
+		userNamesToIDs.registerName(userName, uid);
 		// Register user id into the tournament
 		tournament.registerUser(uid);
 		// Return uid to caller (which is socket wrapper most often)
-		return {success: true, uid: uid, tid: tournamentID};
+		return {success: true, uid: uid, tid: tournamentID, info: tournament.getInfo()};
 
 	},
 	userLeft: function(uid) {

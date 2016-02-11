@@ -6,7 +6,10 @@ function SocketWrapper(websocket) {
 	this.downCb;
 	this.upCb;
 	this.msgCb;
-
+	
+	this.setUser = function(user) {
+		this.user = user;
+	}
 
 	this.init();
 

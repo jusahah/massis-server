@@ -1,3 +1,4 @@
+var _ = require('lodash');
 var User = require('../dynamicComponents/User');
 
 var usersTable = {};
@@ -32,5 +33,12 @@ module.exports = {
 			delete usersTable[id];
 		}
 		return true;
+	},
+	getCount: function() {
+		var c = 0;
+		_.forOwn(usersTable, function() {
+			++c;
+		});
+		return c;
 	}
 }
