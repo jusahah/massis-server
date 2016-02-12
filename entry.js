@@ -135,7 +135,7 @@ var tidsToDomainTids = {};
 
 var domainTid;
 setTimeout(function() {
-	var tid = 2;
+	var tid = 3;
 
 	domainTid = controller.addTournament({
 		id: tid,
@@ -151,6 +151,12 @@ setTimeout(function() {
 					c: "Algiers",
 					d: "Porvoo"
 				},
+				odds: {
+					a: 65,
+					b: 10,
+					c: 20,
+					d: 5
+				},
 				answer: 'c',		
 			},
 			{
@@ -161,6 +167,12 @@ setTimeout(function() {
 					c: "Ankara",
 					d: "Ala-Ballah-Dalah-Bla"
 				},
+				odds: {
+					a: 65,
+					b: 10,
+					c: 20,
+					d: 5
+				},
 				answer: 'a',		
 			},
 			{
@@ -170,6 +182,12 @@ setTimeout(function() {
 					b: "Gatorade",
 					c: "Pepsodent",
 					d: "Red Bull"
+				},
+				odds: {
+					a: 65,
+					b: 10,
+					c: 20,
+					d: 5
 				},
 				answer: 'a',		
 			}
@@ -184,7 +202,7 @@ setTimeout(function() {
 
 }, 600);
 
-
+/*
 setTimeout(function() {
 
 	controller.userJoined('pekka55', domainTid, new DomElementUser2());
@@ -195,7 +213,7 @@ setTimeout(function() {
 	controller.userJoined('pekka7755', domainTid, new DomElementUser2());
 
 }, 1400);
-
+*/
 function DomElementUser2(uid, element) {
 
 	this.receive = function(msg) {

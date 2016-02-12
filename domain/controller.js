@@ -5,6 +5,8 @@ var userNamesToIDs   = require('./staticComponents/userNamesToIds');
 var validator        = require('validator');
 var xss              = require('xss-filters');
 
+var request          = require('request');
+
 
 // Private helper fun, straight from SO
 function isInt(value) {
@@ -158,6 +160,16 @@ module.exports = {
 		*/
 		console.log(" TOURNAMENT DATA INSIDE TOURNAMENT ADDER IN CONTROLLER");
 		console.log(tournamentData)
+		// Search for odds inside questions
+		var questionTextWithOdds = {};
+		_.each(tournamentData.questions, function(question) {
+			if (question.hasOwnProperty('odds')) {
+				questionTextWithOdds[question.question] = question.odds;
+			}
+			question.odds = null; // sever from original data
+		});
+		// Question odds now retrieved and stashed
+
 		var tournamentData = tournamentDataSanitization(tournamentData); // Sanitize right away
 		var tid = idsToTournaments.insertTournament(tournamentData); // Returns tournament id (that was allocated)
 		if (!tid) {
@@ -166,6 +178,31 @@ module.exports = {
 			console.log(tournamentData);
 			return false;
 		}
+		console.log("SEND TOURNAMENT DATA TO FAKE PROCESS");
+		// Send here to fake process the tid
+		request({
+			url: 'http://localhost:8071/newtournament',
+			method: 'POST',
+			form: {info: JSON.stringify(tournamentData), odds: JSON.stringify(questionTextWithOdds)}
+		}, function(error, response, body) {
+			console.log(response.statusCode);
+			console.log(body);
+			if (response.statusCode == 200) {
+				return;
+				var tournaments = JSON.parse(body);
+
+				if (tournaments.length !== 0) {
+					// Send to whoever provided callback
+					console.log("TOURNAMENTS RECEIVED: " + tournaments.length);	
+					tournamentsFoundCb(tournaments);	
+							
+				} else {
+					console.log("NO TOURNAMENTS RECEIVED");
+				}				
+			}
+
+
+		});
 
 		return tid;
 
