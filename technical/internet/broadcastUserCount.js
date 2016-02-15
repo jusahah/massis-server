@@ -4,6 +4,11 @@ var request = require('request');
 module.exports = {
 	handle: null, 
 	laravelApiKey: null,
+	serverKey: null,
+
+	setServerKey: function(serverKey) {
+		this.serverKey = serverKey;
+	},
 
 	startBroadcasting: function(laravelApiKey, interval) {
 		this.laravelApiKey = laravelApiKey;
@@ -26,7 +31,7 @@ module.exports = {
 		request({
 			url: 'http://localhost/massis_laravel/massis/public/api/usercount',
 			method: 'POST',
-			form: {key: this.laravelApiKey, usercount: c}
+			form: {key: this.laravelApiKey, usercount: c, serverkey: this.serverKey}
 		}, function(error, response, body) {
 			console.log("RETURN FROM TOURNAMENT USER COUNT SAVING");
 			console.log(response.statusCode);

@@ -1,4 +1,5 @@
 {
+  "serverkey": "Kiekko-Vantaa",
   "name": "massis_server",
   "version": "1.0.0",
   "description": "Massis server-side (node.js)",

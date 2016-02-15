@@ -56,8 +56,8 @@ function tournamentDataSanitization(data) {
 		maxPlayers: data.maxPlayers,
 		name: xss.inHTMLData(validator.escape(data.name.substring(0, 128))),
 		description: xss.inHTMLData(validator.escape(data.description.substring(0, 1024))),
-		timeToAnswer: data.timeToAnswer,
-		timeBetweenQuestions: data.timeBetweenQuestions,
+		timeToAnswer: data.timeToAnswer < 101 ? data.timeToAnswer*1000 : data.timeToAnswer,
+		timeBetweenQuestions: data.timeBetweenQuestions < 101 ? data.timeBetweenQuestions*1000 : data.timeBetweenQuestions,
 		startsAt: data.startsAt
 	}
 
@@ -180,6 +180,7 @@ module.exports = {
 		}
 		console.log("SEND TOURNAMENT DATA TO FAKE PROCESS");
 		// Send here to fake process the tid
+
 		request({
 			url: 'http://localhost:8071/newtournament',
 			method: 'POST',

@@ -27,6 +27,7 @@ function SingleRound(userList, question, timeToAnswer, expireCallback) {
 
 SingleRound.prototype.start = function() {
 	// Create RoundResults object for gathering results
+	console.log("SingleRound starts");
 	this.rr = RoundResults();
 	this.scorer = Scorer(this.timeToAnswer, null); // null forces Scorer to use default algorithm
 	// Starts a round
@@ -42,12 +43,16 @@ SingleRound.prototype.start = function() {
 		}
 	});
 	this.roundStartTime = Date.now();
+	console.log("Single ROUND STARTED AND ENDS IN: " + this.timeToAnswer);
+	console.log("START TIME: " + this.roundStartTime);
 	setTimeout(function() {
+		console.log("TIME TRIGGER: Single round about to end");
 		this.closeRound();
 	}.bind(this), this.timeToAnswer);
 }
 
 SingleRound.prototype.closeRound = function() {
+	console.log("Single round closes");
 	this.openForAnswers = false;
 	this.expireCallback();
 	// This round's responsibilites stop here
@@ -65,7 +70,7 @@ SingleRound.prototype.answerIn = function(uid, answer, timeTaken) {
 	var wasCorrect = this.question.evalAnswer(answer);
 	var score      = this.scorer.score(wasCorrect, timeTaken);
 	this.rr.addPoints(uid, score);
-	console.warn("Score added for player: " + uid + ", score: " + score);
+	console.log("Score added for player: " + uid + ", score: " + score);
 	return {wasCorrect: wasCorrect};
 }
 

@@ -31,7 +31,7 @@ Scorer.prototype.getFormula = function() {
 }
 
 module.exports = function(timeLimit, algorithm) {
-	timeLimit = timeLimit || 15;
+	timeLimit = Math.round(timeLimit/1000) || 15;
 	algorithm = algorithm || new DefaultAlg(timeLimit);
 	return new Scorer(algorithm);
 }

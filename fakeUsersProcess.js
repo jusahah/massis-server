@@ -58,7 +58,7 @@ function CheatingSystem() {
 	}
 
 	this.startRegisteringParticipants = function(tid) {
-		for (var i = 12; i >= 0; i--) {
+		for (var i = 15; i >= 0; i--) {
 			setTimeout(function() {
 				var s = socketCreator('http://localhost:8079', {'force new connection': true});
 				sockets.push(s);	
@@ -80,11 +80,11 @@ function CheatingSystem() {
 							else if (r < (odds.a + odds.b + odds.c)) choice = 'c';
 							else choice = 'd';
 							s.emit('fromClient', {tag: 'answerIn', data: choice});
-						}, Math.random()*2000+500);
+						}, Math.random()*10000+1500);
 					}
 				});
 
-			}, i * 500);
+			}, i * 100);
 
 
 		};

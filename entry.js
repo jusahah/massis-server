@@ -1,4 +1,6 @@
 // Communication implementation is socket.io
+var packageJSON = require('./package.json'); // We need to get server key from here
+
 var _ = require('lodash');
 var io = require('socket.io')();
 var SocketWrapper = require('./technical/internet/SocketWrapper');
@@ -24,9 +26,10 @@ msgSink.setUsersTable(idsToUsers);
 var SOCKET_PORT = 8079; // Port socket.io is listening
 var MAX_USERS_ON_SERVER = 1000; // After this many users new sockets are denied
 var LARAVEL_KEY = 'visamestari'; // Encrypt in production
+var SERVER_KEY  = packageJSON.serverkey;
 
 var FETCHING_INTERVAL = 3 * 1000; // How often we fetch new tournaments from Laravel endpoint
-var MY_IP_ADDRESS     = 'testi' // Own address to be sent to Laravel endpoint when fetching
+var MY_IP_ADDRESS     = 'localhost:8079' // Own address to be sent to Laravel endpoint when fetching
 
 ////
 ////
@@ -59,12 +62,15 @@ var fetcher = tournamentFetcher(MY_IP_ADDRESS, LARAVEL_KEY, function(tournaments
 			question.choices.c = question.c;
 			question.choices.d = question.d;
 		});
-		controller.addTournament(t);
+		var domainTid = controller.addTournament(t);
+		tidsToDomainTids[t.id] = domainTid;
+		console.log("ADDING TO DOMAIN TIDS MAPPING: " + t.id + " -> " + domainTid);
 	});
 });
 fetcher.startFetching(FETCHING_INTERVAL);
 ///
-countBroadcaster.startBroadcasting(LARAVEL_KEY, 1000*60*2); // Once every two minutes 
+countBroadcaster.setServerKey(SERVER_KEY);
+countBroadcaster.startBroadcasting(LARAVEL_KEY, 1000*30*1); // Once every 30 secs
 
 ///
 /// Tell controller that he must tell somebody when tournaments are so done
@@ -135,11 +141,12 @@ var tidsToDomainTids = {};
 
 var domainTid;
 setTimeout(function() {
-	var tid = 3;
+
+	var tid = 2;
 
 	domainTid = controller.addTournament({
 		id: tid,
-		maxPlayers: 13,
+		maxPlayers: 30,
 		name: "Tuesday Special",
 		description: "Win huge prizes, like hot air balloons. Only on tuesdays",
 		questions: [
@@ -190,12 +197,44 @@ setTimeout(function() {
 					d: 5
 				},
 				answer: 'a',		
+			},
+			{
+				question: "Capital of Botswana2?",
+				choices: {
+					a: "Gaborone",
+					b: "Gatorade",
+					c: "Pepsodent",
+					d: "Red Bull"
+				},
+				odds: {
+					a: 5,
+					b: 10,
+					c: 20,
+					d: 65
+				},
+				answer: 'a',		
+			},
+			{
+				question: "Capital of Botswana3?",
+				choices: {
+					a: "Gaborone",
+					b: "Gatorade",
+					c: "Pepsodent",
+					d: "Red Bull"
+				},
+				odds: {
+					a: 15,
+					b: 60,
+					c: 20,
+					d: 5
+				},
+				answer: 'a',		
 			}
 			
 		],
-		timeToAnswer: Math.floor(Math.random()*2000) + 3000,
-		timeBetweenQuestions: 1000 + Math.floor(Math.random()*2000),
-		startsAt: Date.now() + 10 * 1000
+		timeToAnswer: Math.floor(Math.random()*2000) + 10000,
+		timeBetweenQuestions: 15000 + Math.floor(Math.random()*2000),
+		startsAt: Date.now() + 20 * 1000
 	});
 
 	tidsToDomainTids[tid] = domainTid;

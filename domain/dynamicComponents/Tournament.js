@@ -39,15 +39,18 @@ WaitingForStartState.prototype.getClientMsg = function() {
 	return {tag: 'stateChange', 'state': this.name};
 }
 
-function PreparingNextQuestion(tournament) {
+function PreparingNextQuestion(tournament, timeToNextQuestion) {
 	this.tournament = tournament;
+	this.timeToNextQuestion = timeToNextQuestion;
 	this.name = 'preparingNextQuestion';
 }
 
 PreparingNextQuestion.prototype.getClientMsg = function() {
 	// In production version map all these to integers!
-	return {tag: 'stateChange', 'state': this.name};
+	console.log("PREPARE NEXT QUESTION CLIENT MSG");
+	return {tag: 'stateChange', 'state': this.name, 'data': this.timeToNextQuestion};
 }
+
 
 function WaitingForAnswers(tournament) {
 	this.tournament = tournament;
@@ -209,7 +212,7 @@ Tournament.prototype.start = function() {
 	this.visualLogger.infoMsg('Starting tournament');
 	console.log("TOURNAMENT STARTING");
 	this.currentStandings = Standings(this.userList); // Initialize Standings object
-	this.changeState(new PreparingNextQuestion(this)); // Move to new state
+	this.changeState(new PreparingNextQuestion(this, this.tournamentData.timeBetweenQuestions)); // Move to new state
 	var q = this.questionVault.getNextQuestion();
 	if (!q) {
 		// Tournament over
@@ -222,9 +225,22 @@ Tournament.prototype.start = function() {
 	this.scheduleNextRound(this.round, true);
 	console.log("MSG SINK");
 	console.log(msgSink);
-	msgSink.informUniformly(this.userList, {tag: 'tournamentStarts'});
+	msgSink.informUniformly(this.userList, {tag: 'tournamentStarts', 'data': this.userNameList()});
 
 
+}
+
+Tournament.prototype.userNameList = function() {
+	var names = [];
+	console.log("USERS LIST");
+	console.log(this.userList);
+	_.each(this.userList, function(uid) {
+		names.push(this.idToNameMappings[uid]);
+	}.bind(this));
+	console.log("NAMES CREATED");
+	console.log(names);
+	console.log(names.length);
+	return names;
 }
 
 Tournament.prototype.changeState = function(newState) {
@@ -235,7 +251,7 @@ Tournament.prototype.changeState = function(newState) {
 Tournament.prototype.tournamentOver = function() {
 	this.visualLogger.infoMsg('Ending tournament');
 	this.changeState(new TournamentEnded(this));
-	msgSink.informUniformly(this.userList, {tag: 'tournamentEnded', data: this.currentStandings.finalStandings()});
+	msgSink.informUniformly(this.userList, {tag: 'tournamentEnded', 'originalID': this.tournamentData.id, data: this.currentStandings.finalStandings()});
 	msgSink.msgToController({tag: 'tournamentDone', data: this.getFinalRaport()});
 }
 
@@ -243,6 +259,7 @@ Tournament.prototype.roundEnded = function() {
 	// Handle round ending
 	// Call new standings infering stuff
 	var endedRound = this.round;
+	console.log("Single round ended in tournament");
 	this.visualLogger.infoMsg('End round');
 
 
@@ -255,7 +272,8 @@ Tournament.prototype.roundEnded = function() {
 
 	if (this.questionVault.getQuestionsLeft() !== 0) {
 		// Tournament goes on
-		this.changeState(new PreparingNextQuestion(this));
+		console.log("CHANGE STATE to PREPARE NEXT Q: " + this.timeBetweenQuestions);
+		this.changeState(new PreparingNextQuestion(this, this.tournamentData.timeBetweenQuestions));
 		var q = this.questionVault.getNextQuestion();
 		this.round = SingleRound(this.userList, q, this.tournamentData.timeToAnswer, this.roundEnded.bind(this));
 		this.scheduleNextRound(this.round);
@@ -295,10 +313,12 @@ Tournament.prototype.allowsRegistration = function() {
 Tournament.prototype.scheduleNextRound = function(round, isFirst) {
 	// Settimeout something to launch round
 	// For now just use setTimeout
-	var timeSpan = isFirst ? 2000 : this.tournamentData.timeBetweenQuestions;
+	var timeSpan = isFirst ? this.tournamentData.timeBetweenQuestions : this.tournamentData.timeBetweenQuestions;
 	console.log("Scheduling next round: " + this.tournamentData.timeBetweenQuestions);
+	console.log("SET TIME OUT SPAN: " + timeSpan);
 	this.visualLogger.infoMsg('Scheduling next round');
 	setTimeout(function() {
+		console.log("TIME TRIGGER: Next round about to start");
 		this.visualLogger.infoMsg('Start round');
 		this.changeState(new WaitingForAnswers(this));
 		round.start();
@@ -307,7 +327,10 @@ Tournament.prototype.scheduleNextRound = function(round, isFirst) {
 
 Tournament.prototype.broadcastStateChange = function() {
 	// Informs players of state change
-	msgSink.informUniformly(this.userList, {tag: 'stateChange', state: this.currentState.name});
+	console.log("BROADCAST STATE CHANGE");
+	console.log(this.currentState.name);
+	console.log(this.currentState.getClientMsg());
+	msgSink.informUniformly(this.userList, this.currentState.getClientMsg());
 	//msgSink.informUniformly(this.userList, this.currentState.getClientMsg());
 }
 

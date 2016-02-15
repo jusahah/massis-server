@@ -8,6 +8,8 @@ module.exports = {
 	// Sends same msg to bunch of clients
 	informUniformly: function(userIDs, msg) {
 		var users = this.idsToUsers.getListOfUsers(userIDs);
+		console.log("INFORM UNIFORMLY");
+		console.log(JSON.stringify(msg));
 		// Users who have already left were not included to the users array
 		_.each(users, function(user) {
 			user.send(msg);
