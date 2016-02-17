@@ -3,8 +3,8 @@
 // var QUESTION_MAX_LENGTH = 128;
 
 // Note - you can leave this dependency out if you don't use Question.isQuestionInvalid()
-//var Joi = require('joi'); //TURN ON FOR SERVER-USE
-var Joi    = require('./fakes/FakeJoi'); 
+var Joi = require('joi'); //TURN ON FOR SERVER-USE
+//var Joi    = require('./fakes/FakeJoi'); 
 
 var questionSchema = Joi.object().keys({
 	question: Joi.string().min(1).max(256).required(),

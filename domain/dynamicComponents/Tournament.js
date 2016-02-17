@@ -1,7 +1,7 @@
 // Tool deps
 var _   = require('lodash');
-//var Joi = require('joi'); //TURN ON FOR SERVER-USE
-var Joi    = require('./fakes/FakeJoi'); 
+var Joi = require('joi'); //TURN ON FOR SERVER-USE
+//var Joi    = require('./fakes/FakeJoi'); 
 
 // App deps
 var QuestionVault = require('./QuestionVault');
@@ -17,13 +17,14 @@ var VisualLogging = require('./fakes/VisualLogging');
 var msgSink    = require('../msgSink');
 
 var tournamentSchema = Joi.object().keys({
-	maxPlayers: Joi.number().integer().min(2).max(1000).required(),
+	id: Joi.number().integer().required(),
+	maxPlayers: Joi.number().integer().min(2).required(),
 	name: Joi.string().min(1).max(64).required(),
 	description: Joi.string().min(1).max(256).required(),
 	questions: Joi.array().min(1).max(99).required(),
-	timeToAnswer: Joi.number().integer().min(5).max(60).required(),
-	timeBetweenQuestions: Joi.number().integer().min(3).max(60).required(),
-	startsAt: Joi.number().integer().min(Date.now() + 60 * 1000 * 5).max(Date.now() + 60 * 1000 * 30)
+	timeToAnswer: Joi.number().integer().min(3000).max(60000).required(),
+	timeBetweenQuestions: Joi.number().integer().min(3000).max(60000).required(),
+	startsAt: Joi.number().integer().min(Date.now()).max(Date.now() + 60 * 1000 * 60)
 });
 
 function WaitingForStartState(tournament) {
@@ -101,6 +102,10 @@ function Tournament(data) {
 		Joi.validate(this.tournamentData, tournamentSchema, function(err, value) {
 			if (err) {
 				isInvalid = err.details[0].path;
+				console.log(err);
+				console.log("VALIDATION ERROR BELOW:");
+								console.log(isInvalid);
+
 			}
 		});
 
@@ -124,6 +129,10 @@ function Tournament(data) {
 	this.init();
 
 
+}
+
+Tournament.prototype.hasEnded = function() {
+	return this.currentState.name === 'tournamentEnded';
 }
 
 Tournament.prototype.msgFromPlayer = function(uid, msg) {

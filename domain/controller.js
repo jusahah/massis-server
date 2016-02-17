@@ -7,6 +7,8 @@ var xss              = require('xss-filters');
 
 var request          = require('request');
 
+idsToTournaments.startGC(25000);
+
 
 // Private helper fun, straight from SO
 function isInt(value) {
@@ -56,8 +58,8 @@ function tournamentDataSanitization(data) {
 		maxPlayers: data.maxPlayers,
 		name: xss.inHTMLData(validator.escape(data.name.substring(0, 128))),
 		description: xss.inHTMLData(validator.escape(data.description.substring(0, 1024))),
-		timeToAnswer: data.timeToAnswer < 101 ? data.timeToAnswer*1000 : data.timeToAnswer,
-		timeBetweenQuestions: data.timeBetweenQuestions < 101 ? data.timeBetweenQuestions*1000 : data.timeBetweenQuestions,
+		timeToAnswer: data.timeToAnswer < 101 ? data.timeToAnswer*1000 : data.timeToAnswer*1,
+		timeBetweenQuestions: data.timeBetweenQuestions < 101 ? data.timeBetweenQuestions*1000 : data.timeBetweenQuestions*1,
 		startsAt: data.startsAt
 	}
 
@@ -114,6 +116,9 @@ module.exports = {
 		if (msg.tag === 'tournamentDone') {
 			if (this.callbacks.tournamentDone) {
 				this.callbacks.tournamentDone(msg.data);
+				setTimeout(function() {
+					idsToTournaments.removeTournament(msg.data.originalID);
+				}, 0)
 			}
 		}
 	},

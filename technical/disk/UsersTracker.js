@@ -5,6 +5,7 @@ module.exports = {
 	currentUserCount: 0,
 
 	startTracking: function(testIntervalInMs) {
+		return; // Disabled for production for now
 		testIntervalInMs = testIntervalInMs < 1000 ? 1000 : testIntervalInMs; // Make sure nobody gives too low value
 		setInterval(function() {
 			console.log(this.currentUserCount);
@@ -19,6 +20,7 @@ module.exports = {
 	},
 
 	init: function() {
+		return; // Disabled for production for now
 		console.log("INIT: Created users tracking file: " + this.usersCountFile);
 		fs.createFileSync(this.usersCountFile);
 	}

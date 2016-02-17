@@ -13,6 +13,55 @@ var idsToUsers = require('./domain/staticComponents/userIDsToUsers');
 var controller = require('./domain/controller');
 var msgSink    = require('./domain/msgSink');
 
+// Only for profiling tournament table
+var idsToTournaments = require('./domain/staticComponents/tournamentRefsTable');
+
+///
+// Profiling
+///
+var memwatch = require('memwatch-next');
+memwatch.on('leak', function(info) {
+	console.log("________________________________");
+	console.log("POSSIBLE LEAK: " + info.growth);
+	console.log(info.reason);
+	console.log("________________________________");
+});
+
+memwatch.on('stats', function(stats) {
+	console.log("GC run! Trend is: " + stats.usage_trend);
+	console.log("Base is now at  : " + stats.estimated_base);
+});
+
+setInterval(function() {
+	var countTournamentsInMemory = idsToTournaments.getTournamentCount();
+	console.log("TOURNAMENT IN MEM: " + countTournamentsInMemory);
+}, 1000);
+
+// Test case - remove for production
+var outerK;
+var someOuters = [];
+function createFakeObjectToBeCollected() {
+	var k = {
+		name: 'Jaakko',
+		age: 95,
+		friends: []
+	};
+
+	for (var i = 0; i < 1000 * 100; i++) {
+		k.friends.push('Friend_' + i);
+	};
+
+	outerK = k;
+	if (Math.random() < 0.5) someOuters.push(k);
+}
+//setInterval(createFakeObjectToBeCollected, 50);
+// Test case ends
+
+//
+// Profiling ends
+//
+
+
 msgSink.setController(controller);
 msgSink.setUsersTable(idsToUsers);
 
@@ -232,8 +281,8 @@ setTimeout(function() {
 			}
 			
 		],
-		timeToAnswer: Math.floor(Math.random()*2000) + 10000,
-		timeBetweenQuestions: 15000 + Math.floor(Math.random()*2000),
+		timeToAnswer: 10,
+		timeBetweenQuestions: 15,
 		startsAt: Date.now() + 30 * 1000
 	});
 
