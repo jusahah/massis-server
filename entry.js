@@ -141,7 +141,7 @@ var tidsToDomainTids = {};
 
 var domainTid;
 setTimeout(function() {
-
+	return;
 	var tid = 2;
 
 	domainTid = controller.addTournament({
@@ -234,7 +234,7 @@ setTimeout(function() {
 		],
 		timeToAnswer: Math.floor(Math.random()*2000) + 10000,
 		timeBetweenQuestions: 15000 + Math.floor(Math.random()*2000),
-		startsAt: Date.now() + 20 * 1000
+		startsAt: Date.now() + 30 * 1000
 	});
 
 	tidsToDomainTids[tid] = domainTid;

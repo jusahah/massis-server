@@ -180,7 +180,7 @@ module.exports = {
 		}
 		console.log("SEND TOURNAMENT DATA TO FAKE PROCESS");
 		// Send here to fake process the tid
-
+		return tid;
 		request({
 			url: 'http://localhost:8071/newtournament',
 			method: 'POST',

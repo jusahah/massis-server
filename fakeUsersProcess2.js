@@ -9,12 +9,12 @@ var server = new Hapi.Server();
 server.connection({ port: 8071});
 
 var cheatingSystem = new CheatingSystem();
-var oddsSystem     = require('./fakeUserDeps/oddsSystem');
+//var oddsSystem     = require('./fakeUserDeps/oddsSystem');
 
 var idsToHelpers = {};
 var sockets = [];
 
-
+/*
 server.route({
 	method: 'POST',
 	path: '/newtournament',
@@ -32,9 +32,13 @@ server.route({
 		reply('ok');
 	}
 });
-
+*/
 server.start(function() {
 	console.log("SERVER RUNNING: " + server.info.uri);
+	setTimeout(function() {
+		console.log("STARTING PARTICIPANTS REGISTER");
+		cheatingSystem.startRegisteringParticipants(28);
+	}.bind(this), 2000);
 });
 
 function CheatingSystem() {
@@ -72,15 +76,14 @@ function CheatingSystem() {
 						var question = msg.data;
 						var questionText = question.question;
 						setTimeout(function() {
-							var odds = oddsSystem.getOdds(question);
+							var choice = 'd';
 							var r = Math.random();
-							var choice;
-							if (r < odds.a) choice = 'a';
-							else if (r < (odds.a + odds.b)) choice = 'b';
-							else if (r < (odds.a + odds.b + odds.c)) choice = 'c';
-							else choice = 'd';
+							if (r < 0.25) choice = 'a';
+							else if (r < 0.5) choice = 'b';
+							else if (r < 0.75) choice = 'c';
+
 							s.emit('fromClient', {tag: 'answerIn', data: choice});
-						}, Math.random()*7000+1000);
+						}, Math.random()*10000+1000);
 					}
 				});
 
